@@ -12,6 +12,7 @@ BEAT_DETECTION_DIR="$SCRIPT_DIR/beat_detection"
 SRC_DIR="$INFER_DIR/src"
 AUDIO_TARGET_PATH="$SRC_DIR/origin.wav"
 SEP_OUTPUT_PATH="$SRC_DIR/sep.npy"
+COMBO_OUTPUT_PATH="$SRC_DIR/combo.wav"
 
 DOWNLOAD_SCRIPT="$SCRIPT_DIR/utils/_download.py"
 SEP_SCRIPT="$SCRIPT_DIR/corpus/seperate.py"

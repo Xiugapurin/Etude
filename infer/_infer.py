@@ -25,8 +25,8 @@ DEFAULT_GENERATION_OUTPUT_DIR = ROOT / "infer" / "output"
 DEFAULT_BEAT_PRED_FILE = ROOT / "infer" / "src" / "beat_pred.json"
 DEFAULT_EXTRACT_INPUT_AUDIO_NAME = "origin.wav"
 DEFAULT_EXTRACT_OUTPUT_JSON_NAME = "extract.json"
-DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "edute_e.mid"
-DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "9.pth"
+DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "etude_e.mid"
+DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "15.pth"
 
 # Defaults for Music Generation (Step 2)
 DEFAULT_GENERATION_CONFIG_PATH = ROOT / "dataset" / "tokenized" / "etude_decoder_config.json" # EtudeDecoderConfig JSON
@@ -38,7 +38,7 @@ DEFAULT_GENERATION_OUTPUT_SCORE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.m
 
 DEFAULT_MAX_OUTPUT_TOKENS = 10000
 DEFAULT_MAX_BAR_TOKEN_LIMIT = 512
-DEFAULT_TEMPERATURE = 0.5
+DEFAULT_TEMPERATURE = 0
 DEFAULT_TOP_P = 0.9
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     extract_group.add_argument("--extract_path_output_json", type=pathlib.Path,
                                default=DEFAULT_SRC_DIR / DEFAULT_EXTRACT_OUTPUT_JSON_NAME,
                                help="Path to output JSON file from MIDI extraction (used as condition for generation)")
-    extract_group.add_argument("--extract_path_output_midi", type=pathlib.Path, default=DEFAULT_SRC_DIR / DEFAULT_EXTRACT_OUTPUT_MIDI_NAME,
+    extract_group.add_argument("--extract_path_output_midi", type=pathlib.Path, default=DEFAULT_GENERATION_OUTPUT_DIR / DEFAULT_EXTRACT_OUTPUT_MIDI_NAME,
                                help="Path to output MIDI file from MIDI extraction (optional)")
     extract_group.add_argument("--extract_path_model", type=pathlib.Path, default=DEFAULT_EXTRACTOR_MODEL_PATH,
                                help="Path to MIDI extraction model checkpoint")
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     print(f"\nGenerating tempo info using beat prediction file: {args.gen_beat_pred_file_for_tempo}")
     if args.gen_beat_pred_file_for_tempo.exists():
         try:
-            tg = TempoInfoGenerator(args.gen_beat_pred_file_for_tempo, verbose=False)
+            tg = TempoInfoGenerator(path_beat=args.gen_beat_pred_file_for_tempo, verbose=False)
             tg.generate_tempo_info(args.gen_tempo_file) 
             print(f"Tempo info generated and saved to: {args.gen_tempo_file}")
         except Exception as e_tempo:

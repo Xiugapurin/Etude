@@ -68,6 +68,9 @@ class EtudeDecoderConfig(PretrainedConfig):
         tie_word_embeddings: bool = False, 
         dropout_prob: float = 0.1,
 
+        # [MODIFIED] Add new attribute avg_note_overlap and update context pairs
+        num_avg_note_overlap_bins: int = 3,
+        avg_note_overlap_emb_dim: int = 64,
         num_pitch_coverage_bins: int = 5,
         pitch_coverage_emb_dim: int = 64,
         num_note_per_pos_bins: int = 5,
@@ -76,7 +79,7 @@ class EtudeDecoderConfig(PretrainedConfig):
         pitch_class_entropy_emb_dim: int = 64,
         
         attribute_pad_id: int = 0,
-        context_num_past_xy_pairs: int = 2,
+        context_num_past_xy_pairs: int = 6, # Updated default to 6
         **kwargs
     ):
         super().__init__(
@@ -91,7 +94,8 @@ class EtudeDecoderConfig(PretrainedConfig):
         self.dropout_prob = dropout_prob
         self.max_seq_len = max_seq_len if max_seq_len is not None else max_position_embeddings
 
-        # 更新屬性定義
+        self.num_avg_note_overlap_bins, self.avg_note_overlap_emb_dim = \
+            num_avg_note_overlap_bins, avg_note_overlap_emb_dim
         self.num_pitch_coverage_bins, self.pitch_coverage_emb_dim = \
             num_pitch_coverage_bins, pitch_coverage_emb_dim
         self.num_note_per_pos_bins, self.note_per_pos_emb_dim = \
@@ -111,6 +115,9 @@ class EtudeDecoder(PreTrainedModel):
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.class_embeddings = nn.Embedding(config.num_classes, config.hidden_size, padding_idx=config.pad_class_id)
 
+        # [MODIFIED] Create embedding layer for the new attribute
+        self.avg_note_overlap_embeddings = nn.Embedding(
+            config.num_avg_note_overlap_bins, config.avg_note_overlap_emb_dim, padding_idx=config.attribute_pad_id)
         self.pitch_coverage_embeddings = nn.Embedding(
             config.num_pitch_coverage_bins, config.pitch_coverage_emb_dim, padding_idx=config.attribute_pad_id)
         self.note_per_pos_embeddings = nn.Embedding(
@@ -118,7 +125,9 @@ class EtudeDecoder(PreTrainedModel):
         self.pitch_class_entropy_embeddings = nn.Embedding(
             config.num_pitch_class_entropy_bins, config.pitch_class_entropy_emb_dim, padding_idx=config.attribute_pad_id)
         
+        # [MODIFIED] Update total dimension for projection layer
         total_attribute_concat_dim = (
+            config.avg_note_overlap_emb_dim +
             config.pitch_coverage_emb_dim +
             config.note_per_pos_emb_dim +
             config.pitch_class_entropy_emb_dim
@@ -126,7 +135,7 @@ class EtudeDecoder(PreTrainedModel):
         self.attribute_projection_layer = nn.Linear(total_attribute_concat_dim, config.hidden_size)
 
         gpt_neox_config = GPTNeoXConfig(
-            vocab_size=config.vocab_size, # 雖然 GPTNeoXModel 不直接用，但配置中通常會保留
+            vocab_size=config.vocab_size,
             hidden_size=config.hidden_size, 
             num_hidden_layers=config.num_hidden_layers,
             num_attention_heads=config.num_attention_heads, 
@@ -138,15 +147,15 @@ class EtudeDecoder(PreTrainedModel):
             initializer_range=config.initializer_range,
             layer_norm_eps=config.layer_norm_eps, 
             use_cache=config.use_cache, 
-            bos_token_id=config.bos_token_id, # GPTNeoX 不需要這些，但保持配置一致性
+            bos_token_id=config.bos_token_id,
             eos_token_id=config.eos_token_id, 
             tie_word_embeddings=config.tie_word_embeddings,
         )
         self.transformer = GPTNeoXModel(gpt_neox_config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        # Initialize weights and apply final processing
         self.post_init()
+
 
     def _init_weights(self, module):
         if isinstance(module, nn.Embedding):
@@ -170,6 +179,7 @@ class EtudeDecoder(PreTrainedModel):
         attention_mask: Optional[torch.FloatTensor] = None,
         class_ids: Optional[torch.LongTensor] = None,
 
+        avg_note_overlap_bin_ids: Optional[torch.LongTensor] = None,
         pitch_coverage_bin_ids: Optional[torch.LongTensor] = None,
         note_per_pos_bin_ids: Optional[torch.LongTensor] = None,
         pitch_class_entropy_bin_ids: Optional[torch.LongTensor] = None, 
@@ -188,20 +198,25 @@ class EtudeDecoder(PreTrainedModel):
         if inputs_embeds is None:
             if input_ids is None: raise ValueError("`input_ids` or `inputs_embeds` must be provided.")
             if class_ids is None: raise ValueError("`class_ids` (COND/TGT) must be provided.")
-            if (pitch_coverage_bin_ids is None or
+            # [MODIFIED] Update check to require all four attributes
+            if (avg_note_overlap_bin_ids is None or
+                pitch_coverage_bin_ids is None or
                 note_per_pos_bin_ids is None or 
                 pitch_class_entropy_bin_ids is None):
-                raise ValueError("All three attribute bin IDs (pitch_coverage, note_per_pos, pitch_class_entropy) must be provided.")
+                raise ValueError("All four attribute bin IDs must be provided.")
 
             word_embeds = self.word_embeddings(input_ids)
             cls_embeds = self.class_embeddings(class_ids)
 
+            # [MODIFIED] Get embeddings for all four attributes
+            avg_note_overlap_embs = self.avg_note_overlap_embeddings(avg_note_overlap_bin_ids)
             pitch_coverage_embs = self.pitch_coverage_embeddings(pitch_coverage_bin_ids)
             note_per_pos_embs = self.note_per_pos_embeddings(note_per_pos_bin_ids)
             pitch_class_entropy_embs = self.pitch_class_entropy_embeddings(pitch_class_entropy_bin_ids)
             
+            # [MODIFIED] Concatenate all four attribute embeddings
             combined_attribute_embs = torch.cat(
-                [pitch_coverage_embs, note_per_pos_embs, pitch_class_entropy_embs],
+                [avg_note_overlap_embs, pitch_coverage_embs, note_per_pos_embs, pitch_class_entropy_embs],
                 dim=-1
             )
             projected_attribute_embs = self.attribute_projection_layer(combined_attribute_embs)
@@ -232,6 +247,7 @@ class EtudeDecoder(PreTrainedModel):
             loss=loss, logits=logits, past_key_values=transformer_outputs.past_key_values,
             hidden_states=transformer_outputs.hidden_states, attentions=transformer_outputs.attentions)
     
+
     @torch.no_grad()
     def generate(
         self,
@@ -242,7 +258,6 @@ class EtudeDecoder(PreTrainedModel):
         max_bar_token_limit: int = 512,
         temperature: float = 0.8,
         top_p: float = 0.9,
-        # num_past_bars_for_context: int, # 現在從 self.config 讀取
         context_overlap_ratio: float = 0.5,
     ) -> List[Event]:
         
@@ -252,16 +267,11 @@ class EtudeDecoder(PreTrainedModel):
         try:
             bar_bos_id = vocab.get_bar_bos_id()
             bar_eos_id = vocab.get_bar_eos_id()
-            pad_id = vocab.get_pad_id()
             model_max_seq_len = self.config.max_position_embeddings
-            # 從 config 獲取要回看的 bar pair 數量
             num_past_xy_pairs_for_context = self.config.context_num_past_xy_pairs 
 
             if bar_bos_id == -1 or bar_eos_id == -1:
                  raise ValueError("Special tokens (Bar_BOS, Bar_EOS) not in vocab for generation.")
-        except AttributeError as ae:
-            print(f"Error: Missing attribute in config (e.g., context_num_past_xy_pairs). Config: {self.config}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr); return []
         except Exception as e:
             print(f"Error accessing vocab/config: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr); return []
@@ -273,40 +283,32 @@ class EtudeDecoder(PreTrainedModel):
         
         num_x_bars = len(all_x_bars_token_ids)
         if num_x_bars != len(target_attributes_per_bar):
-            print(f"Error: Number of condition bars ({num_x_bars}) "
-                  f"does not match number of target attribute sets ({len(target_attributes_per_bar)}).", file=sys.stderr)
+            print(f"Error: Number of condition bars ({num_x_bars}) does not match number of target attribute sets ({len(target_attributes_per_bar)}).", file=sys.stderr)
             return []
-        # print(f"Condition split into {num_x_bars} X bars. Will generate {num_x_bars} Y bars.")
 
         generated_events_final: List[Event] = []
         total_generated_target_tokens = 0
         
-        # history_bar_pairs 儲存元組 (x_ids, y_ids, x_attrs_dict, y_attrs_dict)
-        # 其中 attrs_dict 是 {"pitch_coverage_bin": val, ...}
         history_bar_pairs: List[Tuple[List[int], List[int], Dict[str, int], Dict[str, int]]] = []
         
-        kv_cache = None 
-
         empty_bar_ids = [bar_bos_id, bar_eos_id]
-        # 假設所有屬性都使用相同的 bin 數量 self.config.num_pitch_coverage_bins
-        # 如果不同，需要從 config 中分別獲取每個屬性的 num_bins
-        # 為了簡化，我們假設有一個通用的 num_attribute_bins (例如5)
-        num_bins_for_neutral = getattr(self.config, 'num_pitch_coverage_bins', 5) # 示例
-        neutral_attr_bin_id = num_bins_for_neutral // 2
         
+        # [MODIFIED] Define neutral attributes for all four types
         neutral_attributes = {
-            "pitch_coverage_bin": neutral_attr_bin_id,
-            "note_per_pos_bin": neutral_attr_bin_id,
-            "pitch_class_entropy_bin": neutral_attr_bin_id
+            "avg_note_overlap_bin": 1,  # Middle bin of 3
+            "pitch_coverage_bin": self.config.num_pitch_coverage_bins // 2, # Middle bin of 5
+            "note_per_pos_bin": self.config.num_note_per_pos_bins // 2, # Middle bin of 5
+            "pitch_class_entropy_bin": self.config.num_pitch_class_entropy_bins // 2 # Middle bin of 5
         }
 
         for i in tqdm(range(num_x_bars), desc="Generating Bars (Xi -> Yi)"):
             current_xi_token_ids = all_x_bars_token_ids[i]
-            current_target_yi_attributes = target_attributes_per_bar[i] # 這是用於生成 Yi 的目標屬性
+            current_target_yi_attributes = target_attributes_per_bar[i]
             
-            # --- 1. 構建 prompt 前綴，包含 num_past_xy_pairs_for_context 個 XY對，不足則填充 ---
+            # [MODIFIED] Create lists for all four attribute IDs
             prompt_prefix_token_ids: List[int] = []
             prompt_prefix_class_ids: List[int] = []
+            prompt_prefix_ano_ids: List[int] = [] # avg_note_overlap
             prompt_prefix_pcov_ids: List[int] = []
             prompt_prefix_npp_ids: List[int] = []
             prompt_prefix_pce_ids: List[int] = []
@@ -314,113 +316,91 @@ class EtudeDecoder(PreTrainedModel):
             num_actual_history_pairs = len(history_bar_pairs)
             num_padding_pairs_needed = max(0, num_past_xy_pairs_for_context - num_actual_history_pairs)
 
-            # A. 填充空歷史
+            # A. Fill with empty history
             for _ in range(num_padding_pairs_needed):
-                # Pad X_empty
-                prompt_prefix_token_ids.extend(empty_bar_ids)
-                prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(empty_bar_ids))
-                prompt_prefix_pcov_ids.extend([neutral_attributes["pitch_coverage_bin"]] * len(empty_bar_ids))
-                prompt_prefix_npp_ids.extend([neutral_attributes["note_per_pos_bin"]] * len(empty_bar_ids))
-                prompt_prefix_pce_ids.extend([neutral_attributes["pitch_class_entropy_bin"]] * len(empty_bar_ids))
-                # Pad Y_empty
-                prompt_prefix_token_ids.extend(empty_bar_ids)
-                prompt_prefix_class_ids.extend([TGT_CLASS_ID] * len(empty_bar_ids))
-                prompt_prefix_pcov_ids.extend([neutral_attributes["pitch_coverage_bin"]] * len(empty_bar_ids))
-                prompt_prefix_npp_ids.extend([neutral_attributes["note_per_pos_bin"]] * len(empty_bar_ids))
-                prompt_prefix_pce_ids.extend([neutral_attributes["pitch_class_entropy_bin"]] * len(empty_bar_ids))
+                for _ in range(2): # For X_empty and Y_empty
+                    prompt_prefix_token_ids.extend(empty_bar_ids)
+                    prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(empty_bar_ids))
+                    prompt_prefix_ano_ids.extend([neutral_attributes["avg_note_overlap_bin"]] * len(empty_bar_ids))
+                    prompt_prefix_pcov_ids.extend([neutral_attributes["pitch_coverage_bin"]] * len(empty_bar_ids))
+                    prompt_prefix_npp_ids.extend([neutral_attributes["note_per_pos_bin"]] * len(empty_bar_ids))
+                    prompt_prefix_pce_ids.extend([neutral_attributes["pitch_class_entropy_bin"]] * len(empty_bar_ids))
 
-            # B. 添加實際歷史 (從 history_bar_pairs 的尾部取)
-            start_idx_for_actual_history = max(0, num_actual_history_pairs - (num_past_xy_pairs_for_context - num_padding_pairs_needed))
+            # B. Add actual history
+            start_idx_for_actual_history = max(0, num_actual_history_pairs - num_past_xy_pairs_for_context)
             for hist_idx in range(start_idx_for_actual_history, num_actual_history_pairs):
                 hist_x_ids, hist_y_ids, hist_x_attrs, hist_y_attrs = history_bar_pairs[hist_idx]
                 # Add X_hist
                 prompt_prefix_token_ids.extend(hist_x_ids)
                 prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(hist_x_ids))
+                prompt_prefix_ano_ids.extend([hist_x_attrs["avg_note_overlap_bin"]] * len(hist_x_ids))
                 prompt_prefix_pcov_ids.extend([hist_x_attrs["pitch_coverage_bin"]] * len(hist_x_ids))
                 prompt_prefix_npp_ids.extend([hist_x_attrs["note_per_pos_bin"]] * len(hist_x_ids))
                 prompt_prefix_pce_ids.extend([hist_x_attrs["pitch_class_entropy_bin"]] * len(hist_x_ids))
                 # Add Y_hist
                 prompt_prefix_token_ids.extend(hist_y_ids)
                 prompt_prefix_class_ids.extend([TGT_CLASS_ID] * len(hist_y_ids))
+                prompt_prefix_ano_ids.extend([hist_y_attrs["avg_note_overlap_bin"]] * len(hist_y_ids))
                 prompt_prefix_pcov_ids.extend([hist_y_attrs["pitch_coverage_bin"]] * len(hist_y_ids))
                 prompt_prefix_npp_ids.extend([hist_y_attrs["note_per_pos_bin"]] * len(hist_y_ids))
                 prompt_prefix_pce_ids.extend([hist_y_attrs["pitch_class_entropy_bin"]] * len(hist_y_ids))
 
-            # C. 添加當前的 Xi
-            # Xi 的屬性使用其對應的目標 Yi 的屬性 (current_target_yi_attributes)
-            # 這是一個簡化，假設訓練時 Xi 的屬性也是這樣處理的
+            # C. Add current Xi
             prompt_prefix_token_ids.extend(current_xi_token_ids)
             prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(current_xi_token_ids))
+            prompt_prefix_ano_ids.extend([current_target_yi_attributes["avg_note_overlap_bin"]] * len(current_xi_token_ids))
             prompt_prefix_pcov_ids.extend([current_target_yi_attributes["pitch_coverage_bin"]] * len(current_xi_token_ids))
             prompt_prefix_npp_ids.extend([current_target_yi_attributes["note_per_pos_bin"]] * len(current_xi_token_ids))
             prompt_prefix_pce_ids.extend([current_target_yi_attributes["pitch_class_entropy_bin"]] * len(current_xi_token_ids))
             
-            # --- 2. 上下文截斷 (作用於 prompt_prefix_xxx_ids) ---
-            max_safe_prefix_len = model_max_seq_len - (max_bar_token_limit + 2) 
-            if max_safe_prefix_len <= 0: max_safe_prefix_len = model_max_seq_len // 2
-
+            # Context truncation
+            max_safe_prefix_len = model_max_seq_len - (max_bar_token_limit + 2)
             if len(prompt_prefix_token_ids) > max_safe_prefix_len:
                 keep_len = min(int(model_max_seq_len * context_overlap_ratio), max_safe_prefix_len)
-                if keep_len <=0 and len(prompt_prefix_token_ids) > 0: keep_len = 1
-                
-                if keep_len > 0 and len(prompt_prefix_token_ids) > keep_len:
+                if keep_len > 0:
                     prompt_prefix_token_ids = prompt_prefix_token_ids[-keep_len:]
                     prompt_prefix_class_ids = prompt_prefix_class_ids[-keep_len:]
+                    prompt_prefix_ano_ids = prompt_prefix_ano_ids[-keep_len:]
                     prompt_prefix_pcov_ids = prompt_prefix_pcov_ids[-keep_len:]
                     prompt_prefix_npp_ids = prompt_prefix_npp_ids[-keep_len:]
                     prompt_prefix_pce_ids = prompt_prefix_pce_ids[-keep_len:]
-                    kv_cache = None # 截斷後，KV 快取失效
             
-            # --- 3. 準備 Yi 生成的完整輸入 (截斷後的 Context_Prefix + Yi_BOS) ---
+            # Prepare full input for Yi generation
             final_prompt_token_ids = prompt_prefix_token_ids + [bar_bos_id]
             final_prompt_class_ids = prompt_prefix_class_ids + [TGT_CLASS_ID]
+            final_prompt_ano_ids = prompt_prefix_ano_ids + [current_target_yi_attributes["avg_note_overlap_bin"]]
             final_prompt_pcov_ids = prompt_prefix_pcov_ids + [current_target_yi_attributes["pitch_coverage_bin"]]
             final_prompt_npp_ids = prompt_prefix_npp_ids + [current_target_yi_attributes["note_per_pos_bin"]]
             final_prompt_pce_ids = prompt_prefix_pce_ids + [current_target_yi_attributes["pitch_class_entropy_bin"]]
 
             initial_prompt_ids_tensor = torch.tensor([final_prompt_token_ids], dtype=torch.long, device=device)
             initial_prompt_class_ids_tensor = torch.tensor([final_prompt_class_ids], dtype=torch.long, device=device)
+            initial_prompt_ano_ids_tensor = torch.tensor([final_prompt_ano_ids], dtype=torch.long, device=device)
             initial_prompt_pcov_ids_tensor = torch.tensor([final_prompt_pcov_ids], dtype=torch.long, device=device)
             initial_prompt_npp_ids_tensor = torch.tensor([final_prompt_npp_ids], dtype=torch.long, device=device)
             initial_prompt_pce_ids_tensor = torch.tensor([final_prompt_pce_ids], dtype=torch.long, device=device)
             initial_attention_mask_tensor = torch.ones_like(initial_prompt_ids_tensor)
             
-            # --- 4. 內部迴圈：為 Yi 生成 token (與之前版本基本一致) ---
+            # Inner loop for generating one bar (Yi)
             generated_tokens_in_current_yi = []
             last_generated_token_id = bar_bos_id
             generated_len_this_bar = 0
-            # kv_cache 可能從上一個bar的截斷邏輯中被設為None，或者保持原樣
-            # 為了與您原始版本（每個Xi生成一個Yi，內部kv_cache獨立）的穩定性相似，
-            # 並且因為我們現在的 prompt 每次都是新構建的（包含了更長的歷史或padding），
-            # 所以對於 Yi 的第一個 token，kv_cache 應該為 None。
-            current_kv_cache_for_inner_loop = None # 強制為每個 Yi 的生成重新計算 prompt 的 KV
+            current_kv_cache_for_inner_loop = None
 
-            while True:
-                if total_generated_target_tokens >= max_output_tokens: break
-                if generated_len_this_bar >= max_bar_token_limit: break
-                
-                model_input_ids_step: torch.LongTensor
-                # ... (聲明其他 model_xxx_ids_step)
-                model_class_ids_step: torch.LongTensor
-                model_pcov_ids_step: torch.LongTensor 
-                model_npp_ids_step: torch.LongTensor
-                model_pce_ids_step: torch.LongTensor
-                model_attention_mask_step: torch.LongTensor
-                kv_to_pass_to_model: Optional[Tuple[Tuple[torch.Tensor]]]
-
-
-                if generated_len_this_bar == 0: # Yi 的第一個 token (BOS 之後的那個)
+            while generated_len_this_bar < max_bar_token_limit and total_generated_target_tokens < max_output_tokens:
+                if generated_len_this_bar == 0:
                     model_input_ids_step = initial_prompt_ids_tensor
                     model_class_ids_step = initial_prompt_class_ids_tensor
+                    model_ano_ids_step = initial_prompt_ano_ids_tensor
                     model_pcov_ids_step = initial_prompt_pcov_ids_tensor
                     model_npp_ids_step = initial_prompt_npp_ids_tensor
                     model_pce_ids_step = initial_prompt_pce_ids_tensor
                     model_attention_mask_step = initial_attention_mask_tensor
-                    kv_to_pass_to_model = current_kv_cache_for_inner_loop # 應為 None
-                else: # Yi 的後續 token
+                    kv_to_pass_to_model = current_kv_cache_for_inner_loop
+                else:
                     model_input_ids_step = torch.tensor([[last_generated_token_id]], dtype=torch.long, device=device)
                     model_class_ids_step = torch.tensor([[TGT_CLASS_ID]], dtype=torch.long, device=device)
-                    # 後續 token 使用當前目標 Yi 的屬性
+                    model_ano_ids_step = torch.tensor([[current_target_yi_attributes["avg_note_overlap_bin"]]], dtype=torch.long, device=device)
                     model_pcov_ids_step = torch.tensor([[current_target_yi_attributes["pitch_coverage_bin"]]], dtype=torch.long, device=device)
                     model_npp_ids_step = torch.tensor([[current_target_yi_attributes["note_per_pos_bin"]]], dtype=torch.long, device=device)
                     model_pce_ids_step = torch.tensor([[current_target_yi_attributes["pitch_class_entropy_bin"]]], dtype=torch.long, device=device)
@@ -433,6 +413,7 @@ class EtudeDecoder(PreTrainedModel):
                     outputs = self(
                         input_ids=model_input_ids_step, class_ids=model_class_ids_step,
                         attention_mask=model_attention_mask_step,
+                        avg_note_overlap_bin_ids=model_ano_ids_step,
                         pitch_coverage_bin_ids=model_pcov_ids_step,
                         note_per_pos_bin_ids=model_npp_ids_step,
                         pitch_class_entropy_bin_ids=model_pce_ids_step,
@@ -444,9 +425,8 @@ class EtudeDecoder(PreTrainedModel):
                     print(f"Error in model forward pass for Y_{i+1}, token {generated_len_this_bar}: {gen_e}", file=sys.stderr)
                     traceback.print_exc(file=sys.stderr); break 
 
-                # Sampling 
+                # Sampling
                 if temperature > 0:
-                    # ... (sampling logic)
                     if temperature != 1.0: next_token_logits = next_token_logits / temperature
                     if top_p is not None and 0.0 < top_p < 1.0:
                         sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
@@ -459,7 +439,7 @@ class EtudeDecoder(PreTrainedModel):
                             next_token_logits[indices_to_remove] = -float("Inf")
                     probs = F.softmax(next_token_logits, dim=-1)
                     next_token_id = torch.multinomial(probs, num_samples=1).squeeze().item()
-                else: # Greedy
+                else:
                     next_token_id = torch.argmax(next_token_logits, dim=-1).squeeze().item()
 
                 generated_tokens_in_current_yi.append(next_token_id)
@@ -467,57 +447,41 @@ class EtudeDecoder(PreTrainedModel):
                 generated_len_this_bar += 1
                 total_generated_target_tokens += 1
                 if next_token_id == bar_eos_id: break
-            # --- 結束內部迴圈 (生成一個 Yi) ---
 
-            if not generated_tokens_in_current_yi:
-                print(f"Warning: No tokens generated for target bar Y_{i+1}.")
-                current_yi_full_ids_with_bos = [bar_bos_id, bar_eos_id] # 空 bar
-            else:
-                current_yi_full_ids_with_bos = [bar_bos_id] + generated_tokens_in_current_yi
+            current_yi_full_ids_with_bos = [bar_bos_id] + generated_tokens_in_current_yi
             
-            # --- 5. 更新 history_bar_pairs 列表 ---
-            # Xi 的屬性也使用 current_target_yi_attributes (與 prompt 構建時一致)
+            # Update history
             history_bar_pairs.append((
-                list(current_xi_token_ids),             # X_i tokens
-                list(current_yi_full_ids_with_bos),    # Y_i tokens (BOS...EOS)
-                dict(current_target_yi_attributes),    # Attributes for X_i (approximated)
-                dict(current_target_yi_attributes)     # Attributes for Y_i
+                list(current_xi_token_ids),
+                list(current_yi_full_ids_with_bos),
+                dict(current_target_yi_attributes),
+                dict(current_target_yi_attributes)
             ))
-            # 保持 history_bar_pairs 的長度，只保留最近的 num_past_xy_pairs_for_context 個
             if len(history_bar_pairs) > num_past_xy_pairs_for_context:
-                history_bar_pairs = history_bar_pairs[-num_past_xy_pairs_for_context:]
+                history_bar_pairs.pop(0)
 
-            # kv_cache = current_kv_cache_for_inner_loop # 保存這個 bar 生成後的 KV 狀態
-            # 這一行是多餘的，因為我們在外部迴圈開始時會重置 kv_cache=None 以匹配原始的逐bar生成邏輯
-
-            # 解碼當前生成的 Yi 用於最終輸出
-            # ... (與您提供的 EtudeModel-v2.py 中類似的解碼邏輯) ...
+            # Decode events for final output
             generated_events_final.append(Event(type_="Bar", value="BOS"))
-            for tid_idx, tid in enumerate(generated_tokens_in_current_yi): 
-                if tid == pad_id: continue
+            for tid in generated_tokens_in_current_yi:
+                if tid == vocab.get_pad_id(): continue
                 try:
                     token_str = vocab.decode(tid)
                     parts = token_str.split('_', 1)
                     type_, value_str = parts[0], parts[1] if len(parts) > 1 else ''
                     value_parsed = int(value_str) if type_ in ["Note", "Pos"] else value_str 
                     generated_events_final.append(Event(type_=type_, value=value_parsed))
-                except ValueError: generated_events_final.append(Event(type_=type_, value=value_str))
-                except Exception as e_dec_token: print(f"Error decoding token {tid} ('{vocab.decode(tid)}'): {e_dec_token}", file=sys.stderr)
+                except Exception as e_dec_token:
+                    print(f"Error decoding token {tid}: {e_dec_token}", file=sys.stderr)
             
-            if not generated_events_final or generated_events_final[-1].type_ != "Bar" or generated_events_final[-1].value != "EOS":
-                if generated_tokens_in_current_yi and generated_tokens_in_current_yi[-1] != bar_eos_id:
-                    generated_events_final.append(Event(type_="Bar", value="EOS"))
-            elif not generated_tokens_in_current_yi : # 如果 Y_i 為空，確保 Event 列表有 EOS
-                 generated_events_final.append(Event(type_="Bar", value="EOS"))
+            if not generated_events_final or generated_events_final[-1] != Event(type_="Bar", value="EOS"):
+                 if not generated_tokens_in_current_yi or generated_tokens_in_current_yi[-1] != bar_eos_id:
+                     generated_events_final.append(Event(type_="Bar", value="EOS"))
             
-            if total_generated_target_tokens >= max_output_tokens:
-                print(f"\nGlobal max_output_tokens ({max_output_tokens}) reached.")
-                break 
-        # --- 結束外部 for 迴圈 (遍歷所有 Xi) ---
+            if total_generated_target_tokens >= max_output_tokens: break
 
         print(f"\nGeneration finished. Total target tokens generated: {total_generated_target_tokens}")
         return generated_events_final
-    
+
 
 def load_model(config_path: str, checkpoint_path: Optional[str] = None, device: str = "cpu") -> EtudeDecoder:
     try:
