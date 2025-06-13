@@ -68,18 +68,19 @@ class EtudeDecoderConfig(PretrainedConfig):
         tie_word_embeddings: bool = False, 
         dropout_prob: float = 0.1,
 
-        # [MODIFIED] Add new attribute avg_note_overlap and update context pairs
+        # [MODIFIED] Align all bin counts to 3 and embedding dimensions to 32
         num_avg_note_overlap_bins: int = 3,
-        avg_note_overlap_emb_dim: int = 64,
-        num_pitch_coverage_bins: int = 5,
-        pitch_coverage_emb_dim: int = 64,
-        num_note_per_pos_bins: int = 5,
-        note_per_pos_emb_dim: int = 64,
-        num_pitch_class_entropy_bins: int = 5,
-        pitch_class_entropy_emb_dim: int = 64,
+        avg_note_overlap_emb_dim: int = 32,
+        num_pitch_coverage_bins: int = 3,
+        pitch_coverage_emb_dim: int = 32,
+        num_note_per_pos_bins: int = 3,
+        note_per_pos_emb_dim: int = 32,
+        num_pitch_class_entropy_bins: int = 3,
+        pitch_class_entropy_emb_dim: int = 32,
         
         attribute_pad_id: int = 0,
-        context_num_past_xy_pairs: int = 6, # Updated default to 6
+        # [MODIFIED] Align context window to 4 bars
+        context_num_past_xy_pairs: int = 4,
         **kwargs
     ):
         super().__init__(
@@ -115,7 +116,6 @@ class EtudeDecoder(PreTrainedModel):
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.class_embeddings = nn.Embedding(config.num_classes, config.hidden_size, padding_idx=config.pad_class_id)
 
-        # [MODIFIED] Create embedding layer for the new attribute
         self.avg_note_overlap_embeddings = nn.Embedding(
             config.num_avg_note_overlap_bins, config.avg_note_overlap_emb_dim, padding_idx=config.attribute_pad_id)
         self.pitch_coverage_embeddings = nn.Embedding(
@@ -125,45 +125,33 @@ class EtudeDecoder(PreTrainedModel):
         self.pitch_class_entropy_embeddings = nn.Embedding(
             config.num_pitch_class_entropy_bins, config.pitch_class_entropy_emb_dim, padding_idx=config.attribute_pad_id)
         
-        # [MODIFIED] Update total dimension for projection layer
         total_attribute_concat_dim = (
-            config.avg_note_overlap_emb_dim +
-            config.pitch_coverage_emb_dim +
-            config.note_per_pos_emb_dim +
-            config.pitch_class_entropy_emb_dim
+            config.avg_note_overlap_emb_dim + config.pitch_coverage_emb_dim +
+            config.note_per_pos_emb_dim + config.pitch_class_entropy_emb_dim
         )
         self.attribute_projection_layer = nn.Linear(total_attribute_concat_dim, config.hidden_size)
 
         gpt_neox_config = GPTNeoXConfig(
-            vocab_size=config.vocab_size,
-            hidden_size=config.hidden_size, 
-            num_hidden_layers=config.num_hidden_layers,
-            num_attention_heads=config.num_attention_heads, 
-            intermediate_size=config.intermediate_size,
-            hidden_act=config.hidden_act, 
-            rotary_pct=config.rotary_pct, 
-            rotary_emb_base=config.rotary_emb_base,
+            vocab_size=config.vocab_size, hidden_size=config.hidden_size, 
+            num_hidden_layers=config.num_hidden_layers, num_attention_heads=config.num_attention_heads, 
+            intermediate_size=config.intermediate_size, hidden_act=config.hidden_act, 
+            rotary_pct=config.rotary_pct, rotary_emb_base=config.rotary_emb_base,
             max_position_embeddings=config.max_position_embeddings,
-            initializer_range=config.initializer_range,
-            layer_norm_eps=config.layer_norm_eps, 
-            use_cache=config.use_cache, 
-            bos_token_id=config.bos_token_id,
-            eos_token_id=config.eos_token_id, 
-            tie_word_embeddings=config.tie_word_embeddings,
+            initializer_range=config.initializer_range, layer_norm_eps=config.layer_norm_eps, 
+            use_cache=config.use_cache, bos_token_id=config.bos_token_id,
+            eos_token_id=config.eos_token_id, tie_word_embeddings=config.tie_word_embeddings,
         )
         self.transformer = GPTNeoXModel(gpt_neox_config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
         self.post_init()
 
-
     def _init_weights(self, module):
-        if isinstance(module, nn.Embedding):
+        if isinstance(module, (nn.Embedding, nn.Linear)):
              module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-             if module.padding_idx is not None: module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, nn.Linear):
-             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-             if module.bias is not None: module.bias.data.zero_()
+             if isinstance(module, nn.Embedding) and module.padding_idx is not None:
+                 module.weight.data[module.padding_idx].zero_()
+             if isinstance(module, nn.Linear) and module.bias is not None:
+                 module.bias.data.zero_()
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
@@ -178,12 +166,10 @@ class EtudeDecoder(PreTrainedModel):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         class_ids: Optional[torch.LongTensor] = None,
-
         avg_note_overlap_bin_ids: Optional[torch.LongTensor] = None,
         pitch_coverage_bin_ids: Optional[torch.LongTensor] = None,
         note_per_pos_bin_ids: Optional[torch.LongTensor] = None,
         pitch_class_entropy_bin_ids: Optional[torch.LongTensor] = None, 
-        
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -193,59 +179,40 @@ class EtudeDecoder(PreTrainedModel):
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if inputs_embeds is None:
-            if input_ids is None: raise ValueError("`input_ids` or `inputs_embeds` must be provided.")
-            if class_ids is None: raise ValueError("`class_ids` (COND/TGT) must be provided.")
-            # [MODIFIED] Update check to require all four attributes
-            if (avg_note_overlap_bin_ids is None or
-                pitch_coverage_bin_ids is None or
-                note_per_pos_bin_ids is None or 
-                pitch_class_entropy_bin_ids is None):
-                raise ValueError("All four attribute bin IDs must be provided.")
+            if input_ids is None or class_ids is None or avg_note_overlap_bin_ids is None or \
+               pitch_coverage_bin_ids is None or note_per_pos_bin_ids is None or pitch_class_entropy_bin_ids is None:
+                raise ValueError("`input_ids`, `class_ids`, and all four attribute bin IDs must be provided.")
 
             word_embeds = self.word_embeddings(input_ids)
             cls_embeds = self.class_embeddings(class_ids)
-
-            # [MODIFIED] Get embeddings for all four attributes
-            avg_note_overlap_embs = self.avg_note_overlap_embeddings(avg_note_overlap_bin_ids)
-            pitch_coverage_embs = self.pitch_coverage_embeddings(pitch_coverage_bin_ids)
-            note_per_pos_embs = self.note_per_pos_embeddings(note_per_pos_bin_ids)
-            pitch_class_entropy_embs = self.pitch_class_entropy_embeddings(pitch_class_entropy_bin_ids)
             
-            # [MODIFIED] Concatenate all four attribute embeddings
-            combined_attribute_embs = torch.cat(
-                [avg_note_overlap_embs, pitch_coverage_embs, note_per_pos_embs, pitch_class_entropy_embs],
-                dim=-1
-            )
-            projected_attribute_embs = self.attribute_projection_layer(combined_attribute_embs)
-            inputs_embeds = word_embeds + cls_embeds + projected_attribute_embs
+            attr_embs = torch.cat([
+                self.avg_note_overlap_embeddings(avg_note_overlap_bin_ids),
+                self.pitch_coverage_embeddings(pitch_coverage_bin_ids),
+                self.note_per_pos_embeddings(note_per_pos_bin_ids),
+                self.pitch_class_entropy_embeddings(pitch_class_entropy_bin_ids)
+            ], dim=-1)
+            
+            inputs_embeds = word_embeds + cls_embeds + self.attribute_projection_layer(attr_embs)
         
         transformer_outputs = self.transformer(
-            inputs_embeds=inputs_embeds, 
-            attention_mask=attention_mask, 
-            position_ids=None, 
-            past_key_values=past_key_values,
-            use_cache=use_cache, 
-            output_attentions=output_attentions, 
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            inputs_embeds=inputs_embeds, attention_mask=attention_mask, past_key_values=past_key_values,
+            use_cache=use_cache, output_attentions=output_attentions, 
+            output_hidden_states=output_hidden_states, return_dict=return_dict,
         )
         hidden_states = transformer_outputs[0]
         logits = self.lm_head(hidden_states)
         loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss() 
-            loss = loss_fct(logits.view(-1, self.config.vocab_size), labels.view(-1))
+            loss = F.cross_entropy(logits.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
-            output = (logits,) + transformer_outputs[1:]
-            return ((loss,) + output) if loss is not None else output
+            return ((loss,) + (logits,) + transformer_outputs[1:]) if loss is not None else ((logits,) + transformer_outputs[1:])
         
-        return CausalLMOutputWithPast(
-            loss=loss, logits=logits, past_key_values=transformer_outputs.past_key_values,
-            hidden_states=transformer_outputs.hidden_states, attentions=transformer_outputs.attentions)
+        return CausalLMOutputWithPast(loss=loss, logits=logits, past_key_values=transformer_outputs.past_key_values,
+                                      hidden_states=transformer_outputs.hidden_states, attentions=transformer_outputs.attentions)
     
 
     @torch.no_grad()
@@ -254,7 +221,8 @@ class EtudeDecoder(PreTrainedModel):
         vocab: Vocab,
         initial_condition_token_ids: List[int],
         target_attributes_per_bar: List[Dict[str, int]],
-        max_output_tokens: int = 10000,
+        # [MODIFIED] Update default token limit
+        max_output_tokens: int = 25600,
         max_bar_token_limit: int = 512,
         temperature: float = 0.8,
         top_p: float = 0.9,
@@ -265,221 +233,112 @@ class EtudeDecoder(PreTrainedModel):
         self.eval()
 
         try:
-            bar_bos_id = vocab.get_bar_bos_id()
-            bar_eos_id = vocab.get_bar_eos_id()
-            model_max_seq_len = self.config.max_position_embeddings
-            num_past_xy_pairs_for_context = self.config.context_num_past_xy_pairs 
-
-            if bar_bos_id == -1 or bar_eos_id == -1:
-                 raise ValueError("Special tokens (Bar_BOS, Bar_EOS) not in vocab for generation.")
+            bar_bos_id, bar_eos_id = vocab.get_bar_bos_id(), vocab.get_bar_eos_id()
+            if bar_bos_id == -1 or bar_eos_id == -1: raise ValueError("Bar tokens not in vocab.")
+            num_past_xy_pairs_for_context = self.config.context_num_past_xy_pairs
         except Exception as e:
-            print(f"Error accessing vocab/config: {e}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr); return []
+            print(f"Error accessing vocab/config: {e}", file=sys.stderr); return []
 
-        all_x_bars_token_ids = _split_into_bars_for_generate(initial_condition_token_ids, bar_bos_id, bar_eos_id)
-        if not all_x_bars_token_ids:
-            print("Error: Initial condition IDs could not be split into bars.", file=sys.stderr)
-            return []
-        
-        num_x_bars = len(all_x_bars_token_ids)
-        if num_x_bars != len(target_attributes_per_bar):
-            print(f"Error: Number of condition bars ({num_x_bars}) does not match number of target attribute sets ({len(target_attributes_per_bar)}).", file=sys.stderr)
-            return []
+        all_x_bars = _split_into_bars_for_generate(initial_condition_token_ids, bar_bos_id, bar_eos_id)
+        if not all_x_bars or len(all_x_bars) != len(target_attributes_per_bar):
+            print("Error: Condition bars mismatch with target attributes.", file=sys.stderr); return []
 
-        generated_events_final: List[Event] = []
-        total_generated_target_tokens = 0
-        
+        generated_events_final, total_generated_target_tokens = [], 0
         history_bar_pairs: List[Tuple[List[int], List[int], Dict[str, int], Dict[str, int]]] = []
         
         empty_bar_ids = [bar_bos_id, bar_eos_id]
-        
-        # [MODIFIED] Define neutral attributes for all four types
+        # [MODIFIED] Neutral attribute is always middle bin 1, since all attributes have 3 bins.
         neutral_attributes = {
-            "avg_note_overlap_bin": 1,  # Middle bin of 3
-            "pitch_coverage_bin": self.config.num_pitch_coverage_bins // 2, # Middle bin of 5
-            "note_per_pos_bin": self.config.num_note_per_pos_bins // 2, # Middle bin of 5
-            "pitch_class_entropy_bin": self.config.num_pitch_class_entropy_bins // 2 # Middle bin of 5
+            "avg_note_overlap_bin": 1, "pitch_coverage_bin": 1,
+            "note_per_pos_bin": 1, "pitch_class_entropy_bin": 1
         }
-
-        for i in tqdm(range(num_x_bars), desc="Generating Bars (Xi -> Yi)"):
-            current_xi_token_ids = all_x_bars_token_ids[i]
-            current_target_yi_attributes = target_attributes_per_bar[i]
+        
+        # [MODIFIED] Add tqdm wrapper here
+        pbar = tqdm(range(len(all_x_bars)), desc="Generating Bars", unit="bar")
+        for i in pbar:
+            current_xi_ids = all_x_bars[i]
+            current_yi_attrs = target_attributes_per_bar[i]
             
-            # [MODIFIED] Create lists for all four attribute IDs
-            prompt_prefix_token_ids: List[int] = []
-            prompt_prefix_class_ids: List[int] = []
-            prompt_prefix_ano_ids: List[int] = [] # avg_note_overlap
-            prompt_prefix_pcov_ids: List[int] = []
-            prompt_prefix_npp_ids: List[int] = []
-            prompt_prefix_pce_ids: List[int] = []
-
-            num_actual_history_pairs = len(history_bar_pairs)
-            num_padding_pairs_needed = max(0, num_past_xy_pairs_for_context - num_actual_history_pairs)
-
-            # A. Fill with empty history
-            for _ in range(num_padding_pairs_needed):
-                for _ in range(2): # For X_empty and Y_empty
-                    prompt_prefix_token_ids.extend(empty_bar_ids)
-                    prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(empty_bar_ids))
-                    prompt_prefix_ano_ids.extend([neutral_attributes["avg_note_overlap_bin"]] * len(empty_bar_ids))
-                    prompt_prefix_pcov_ids.extend([neutral_attributes["pitch_coverage_bin"]] * len(empty_bar_ids))
-                    prompt_prefix_npp_ids.extend([neutral_attributes["note_per_pos_bin"]] * len(empty_bar_ids))
-                    prompt_prefix_pce_ids.extend([neutral_attributes["pitch_class_entropy_bin"]] * len(empty_bar_ids))
-
-            # B. Add actual history
-            start_idx_for_actual_history = max(0, num_actual_history_pairs - num_past_xy_pairs_for_context)
-            for hist_idx in range(start_idx_for_actual_history, num_actual_history_pairs):
-                hist_x_ids, hist_y_ids, hist_x_attrs, hist_y_attrs = history_bar_pairs[hist_idx]
-                # Add X_hist
-                prompt_prefix_token_ids.extend(hist_x_ids)
-                prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(hist_x_ids))
-                prompt_prefix_ano_ids.extend([hist_x_attrs["avg_note_overlap_bin"]] * len(hist_x_ids))
-                prompt_prefix_pcov_ids.extend([hist_x_attrs["pitch_coverage_bin"]] * len(hist_x_ids))
-                prompt_prefix_npp_ids.extend([hist_x_attrs["note_per_pos_bin"]] * len(hist_x_ids))
-                prompt_prefix_pce_ids.extend([hist_x_attrs["pitch_class_entropy_bin"]] * len(hist_x_ids))
-                # Add Y_hist
-                prompt_prefix_token_ids.extend(hist_y_ids)
-                prompt_prefix_class_ids.extend([TGT_CLASS_ID] * len(hist_y_ids))
-                prompt_prefix_ano_ids.extend([hist_y_attrs["avg_note_overlap_bin"]] * len(hist_y_ids))
-                prompt_prefix_pcov_ids.extend([hist_y_attrs["pitch_coverage_bin"]] * len(hist_y_ids))
-                prompt_prefix_npp_ids.extend([hist_y_attrs["note_per_pos_bin"]] * len(hist_y_ids))
-                prompt_prefix_pce_ids.extend([hist_y_attrs["pitch_class_entropy_bin"]] * len(hist_y_ids))
-
-            # C. Add current Xi
-            prompt_prefix_token_ids.extend(current_xi_token_ids)
-            prompt_prefix_class_ids.extend([COND_CLASS_ID] * len(current_xi_token_ids))
-            prompt_prefix_ano_ids.extend([current_target_yi_attributes["avg_note_overlap_bin"]] * len(current_xi_token_ids))
-            prompt_prefix_pcov_ids.extend([current_target_yi_attributes["pitch_coverage_bin"]] * len(current_xi_token_ids))
-            prompt_prefix_npp_ids.extend([current_target_yi_attributes["note_per_pos_bin"]] * len(current_xi_token_ids))
-            prompt_prefix_pce_ids.extend([current_target_yi_attributes["pitch_class_entropy_bin"]] * len(current_xi_token_ids))
+            prompt_tokens, p_classes, p_ano, p_pcov, p_npp, p_pce = [], [], [], [], [], []
             
-            # Context truncation
-            max_safe_prefix_len = model_max_seq_len - (max_bar_token_limit + 2)
-            if len(prompt_prefix_token_ids) > max_safe_prefix_len:
-                keep_len = min(int(model_max_seq_len * context_overlap_ratio), max_safe_prefix_len)
-                if keep_len > 0:
-                    prompt_prefix_token_ids = prompt_prefix_token_ids[-keep_len:]
-                    prompt_prefix_class_ids = prompt_prefix_class_ids[-keep_len:]
-                    prompt_prefix_ano_ids = prompt_prefix_ano_ids[-keep_len:]
-                    prompt_prefix_pcov_ids = prompt_prefix_pcov_ids[-keep_len:]
-                    prompt_prefix_npp_ids = prompt_prefix_npp_ids[-keep_len:]
-                    prompt_prefix_pce_ids = prompt_prefix_pce_ids[-keep_len:]
-            
-            # Prepare full input for Yi generation
-            final_prompt_token_ids = prompt_prefix_token_ids + [bar_bos_id]
-            final_prompt_class_ids = prompt_prefix_class_ids + [TGT_CLASS_ID]
-            final_prompt_ano_ids = prompt_prefix_ano_ids + [current_target_yi_attributes["avg_note_overlap_bin"]]
-            final_prompt_pcov_ids = prompt_prefix_pcov_ids + [current_target_yi_attributes["pitch_coverage_bin"]]
-            final_prompt_npp_ids = prompt_prefix_npp_ids + [current_target_yi_attributes["note_per_pos_bin"]]
-            final_prompt_pce_ids = prompt_prefix_pce_ids + [current_target_yi_attributes["pitch_class_entropy_bin"]]
+            # Simplified history building
+            history_to_use = history_bar_pairs[-num_past_xy_pairs_for_context:]
+            padding_needed = num_past_xy_pairs_for_context - len(history_to_use)
 
-            initial_prompt_ids_tensor = torch.tensor([final_prompt_token_ids], dtype=torch.long, device=device)
-            initial_prompt_class_ids_tensor = torch.tensor([final_prompt_class_ids], dtype=torch.long, device=device)
-            initial_prompt_ano_ids_tensor = torch.tensor([final_prompt_ano_ids], dtype=torch.long, device=device)
-            initial_prompt_pcov_ids_tensor = torch.tensor([final_prompt_pcov_ids], dtype=torch.long, device=device)
-            initial_prompt_npp_ids_tensor = torch.tensor([final_prompt_npp_ids], dtype=torch.long, device=device)
-            initial_prompt_pce_ids_tensor = torch.tensor([final_prompt_pce_ids], dtype=torch.long, device=device)
-            initial_attention_mask_tensor = torch.ones_like(initial_prompt_ids_tensor)
-            
-            # Inner loop for generating one bar (Yi)
-            generated_tokens_in_current_yi = []
-            last_generated_token_id = bar_bos_id
-            generated_len_this_bar = 0
-            current_kv_cache_for_inner_loop = None
+            for _ in range(padding_needed):
+                for _ in range(2): # X_empty, Y_empty
+                    prompt_tokens.extend(empty_bar_ids); p_classes.extend([COND_CLASS_ID]*len(empty_bar_ids))
+                    p_ano.extend([neutral_attributes["avg_note_overlap_bin"]]*len(empty_bar_ids))
+                    p_pcov.extend([neutral_attributes["pitch_coverage_bin"]]*len(empty_bar_ids))
+                    p_npp.extend([neutral_attributes["note_per_pos_bin"]]*len(empty_bar_ids))
+                    p_pce.extend([neutral_attributes["pitch_class_entropy_bin"]]*len(empty_bar_ids))
 
-            while generated_len_this_bar < max_bar_token_limit and total_generated_target_tokens < max_output_tokens:
-                if generated_len_this_bar == 0:
-                    model_input_ids_step = initial_prompt_ids_tensor
-                    model_class_ids_step = initial_prompt_class_ids_tensor
-                    model_ano_ids_step = initial_prompt_ano_ids_tensor
-                    model_pcov_ids_step = initial_prompt_pcov_ids_tensor
-                    model_npp_ids_step = initial_prompt_npp_ids_tensor
-                    model_pce_ids_step = initial_prompt_pce_ids_tensor
-                    model_attention_mask_step = initial_attention_mask_tensor
-                    kv_to_pass_to_model = current_kv_cache_for_inner_loop
-                else:
-                    model_input_ids_step = torch.tensor([[last_generated_token_id]], dtype=torch.long, device=device)
-                    model_class_ids_step = torch.tensor([[TGT_CLASS_ID]], dtype=torch.long, device=device)
-                    model_ano_ids_step = torch.tensor([[current_target_yi_attributes["avg_note_overlap_bin"]]], dtype=torch.long, device=device)
-                    model_pcov_ids_step = torch.tensor([[current_target_yi_attributes["pitch_coverage_bin"]]], dtype=torch.long, device=device)
-                    model_npp_ids_step = torch.tensor([[current_target_yi_attributes["note_per_pos_bin"]]], dtype=torch.long, device=device)
-                    model_pce_ids_step = torch.tensor([[current_target_yi_attributes["pitch_class_entropy_bin"]]], dtype=torch.long, device=device)
-                    
-                    kv_len = current_kv_cache_for_inner_loop[0][0].shape[-2] 
-                    model_attention_mask_step = torch.ones((1, kv_len + 1), dtype=torch.long, device=device)
-                    kv_to_pass_to_model = current_kv_cache_for_inner_loop
+            for x_ids, y_ids, x_attrs, y_attrs in history_to_use:
+                prompt_tokens.extend(x_ids); p_classes.extend([COND_CLASS_ID]*len(x_ids))
+                p_ano.extend([x_attrs["avg_note_overlap_bin"]]*len(x_ids)); p_pcov.extend([x_attrs["pitch_coverage_bin"]]*len(x_ids)); p_npp.extend([x_attrs["note_per_pos_bin"]]*len(x_ids)); p_pce.extend([x_attrs["pitch_class_entropy_bin"]]*len(x_ids))
+                prompt_tokens.extend(y_ids); p_classes.extend([TGT_CLASS_ID]*len(y_ids))
+                p_ano.extend([y_attrs["avg_note_overlap_bin"]]*len(y_ids)); p_pcov.extend([y_attrs["pitch_coverage_bin"]]*len(y_ids)); p_npp.extend([y_attrs["note_per_pos_bin"]]*len(y_ids)); p_pce.extend([y_attrs["pitch_class_entropy_bin"]]*len(y_ids))
+
+            prompt_tokens.extend(current_xi_ids); p_classes.extend([COND_CLASS_ID]*len(current_xi_ids))
+            p_ano.extend([current_yi_attrs["avg_note_overlap_bin"]]*len(current_xi_ids)); p_pcov.extend([current_yi_attrs["pitch_coverage_bin"]]*len(current_xi_ids)); p_npp.extend([current_yi_attrs["note_per_pos_bin"]]*len(current_xi_ids)); p_pce.extend([current_yi_attrs["pitch_class_entropy_bin"]]*len(current_xi_ids))
+
+            # Context Truncation
+            if len(prompt_tokens) > self.config.max_position_embeddings - max_bar_token_limit:
+                keep_len = int(self.config.max_position_embeddings * context_overlap_ratio)
+                prompt_tokens, p_classes, p_ano, p_pcov, p_npp, p_pce = (l[-keep_len:] for l in [prompt_tokens, p_classes, p_ano, p_pcov, p_npp, p_pce])
+
+            # Prepare for generation loop
+            tokens_this_bar, kv_cache = [], None
+            
+            # Initial prompt processing
+            prompt_tensors = [torch.tensor([l + [bar_bos_id]], device=device) for l in [prompt_tokens, p_classes, p_ano, p_pcov, p_npp, p_pce]]
+            attention_mask = torch.ones_like(prompt_tensors[0])
+
+            while len(tokens_this_bar) < max_bar_token_limit and total_generated_target_tokens < max_output_tokens:
+                if kv_cache: # Subsequent steps
+                    last_token = torch.tensor([[tokens_this_bar[-1]]], device=device)
+                    attn_mask_len = kv_cache[0][0].shape[-2] + 1
+                    attention_mask = torch.ones((1, attn_mask_len), device=device)
+                    step_inputs = [last_token, torch.tensor([[TGT_CLASS_ID]], device=device)] + \
+                                  [torch.tensor([[current_yi_attrs[k]]], device=device) for k in sorted(current_yi_attrs)]
+                else: # First step
+                    step_inputs = prompt_tensors
                 
                 try:
                     outputs = self(
-                        input_ids=model_input_ids_step, class_ids=model_class_ids_step,
-                        attention_mask=model_attention_mask_step,
-                        avg_note_overlap_bin_ids=model_ano_ids_step,
-                        pitch_coverage_bin_ids=model_pcov_ids_step,
-                        note_per_pos_bin_ids=model_npp_ids_step,
-                        pitch_class_entropy_bin_ids=model_pce_ids_step,
-                        past_key_values=kv_to_pass_to_model,
-                        use_cache=True, return_dict=True )
-                    next_token_logits = outputs.logits[:, -1, :]
-                    current_kv_cache_for_inner_loop = outputs.past_key_values 
-                except Exception as gen_e:
-                    print(f"Error in model forward pass for Y_{i+1}, token {generated_len_this_bar}: {gen_e}", file=sys.stderr)
-                    traceback.print_exc(file=sys.stderr); break 
+                        input_ids=step_inputs[0], class_ids=step_inputs[1], attention_mask=attention_mask,
+                        avg_note_overlap_bin_ids=step_inputs[2], pitch_coverage_bin_ids=step_inputs[3],
+                        note_per_pos_bin_ids=step_inputs[4], pitch_class_entropy_bin_ids=step_inputs[5],
+                        past_key_values=kv_cache, use_cache=True, return_dict=True)
+                    kv_cache = outputs.past_key_values
+                    
+                    next_logits = outputs.logits[:, -1, :]
+                    if temperature > 0:
+                        probs = F.softmax(next_logits / temperature, dim=-1)
+                        if 0 < top_p < 1.0:
+                            sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+                            cum_probs = torch.cumsum(sorted_probs, dim=-1)
+                            indices_to_remove = cum_probs > top_p
+                            indices_to_remove[..., 1:] = indices_to_remove[..., :-1].clone()
+                            indices_to_remove[..., 0] = 0
+                            probs[0, sorted_indices[0, indices_to_remove[0]]] = 0
+                            probs = probs / probs.sum()
+                        next_token_id = torch.multinomial(probs, 1).squeeze().item()
+                    else: next_token_id = torch.argmax(next_logits, dim=-1).item()
+                    
+                    tokens_this_bar.append(next_token_id)
+                    total_generated_target_tokens += 1
+                    if next_token_id == bar_eos_id: break
+                except Exception as e:
+                    print(f"Error during generation step: {e}", file=sys.stderr); break
 
-                # Sampling
-                if temperature > 0:
-                    if temperature != 1.0: next_token_logits = next_token_logits / temperature
-                    if top_p is not None and 0.0 < top_p < 1.0:
-                        sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                        sorted_indices_to_remove = cumulative_probs > top_p
-                        if torch.any(sorted_indices_to_remove):
-                            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                            sorted_indices_to_remove[..., 0] = 0
-                            indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                            next_token_logits[indices_to_remove] = -float("Inf")
-                    probs = F.softmax(next_token_logits, dim=-1)
-                    next_token_id = torch.multinomial(probs, num_samples=1).squeeze().item()
-                else:
-                    next_token_id = torch.argmax(next_token_logits, dim=-1).squeeze().item()
-
-                generated_tokens_in_current_yi.append(next_token_id)
-                last_generated_token_id = next_token_id
-                generated_len_this_bar += 1
-                total_generated_target_tokens += 1
-                if next_token_id == bar_eos_id: break
-
-            current_yi_full_ids_with_bos = [bar_bos_id] + generated_tokens_in_current_yi
-            
-            # Update history
-            history_bar_pairs.append((
-                list(current_xi_token_ids),
-                list(current_yi_full_ids_with_bos),
-                dict(current_target_yi_attributes),
-                dict(current_target_yi_attributes)
-            ))
-            if len(history_bar_pairs) > num_past_xy_pairs_for_context:
-                history_bar_pairs.pop(0)
-
-            # Decode events for final output
-            generated_events_final.append(Event(type_="Bar", value="BOS"))
-            for tid in generated_tokens_in_current_yi:
-                if tid == vocab.get_pad_id(): continue
-                try:
-                    token_str = vocab.decode(tid)
-                    parts = token_str.split('_', 1)
-                    type_, value_str = parts[0], parts[1] if len(parts) > 1 else ''
-                    value_parsed = int(value_str) if type_ in ["Note", "Pos"] else value_str 
-                    generated_events_final.append(Event(type_=type_, value=value_parsed))
-                except Exception as e_dec_token:
-                    print(f"Error decoding token {tid}: {e_dec_token}", file=sys.stderr)
-            
-            if not generated_events_final or generated_events_final[-1] != Event(type_="Bar", value="EOS"):
-                 if not generated_tokens_in_current_yi or generated_tokens_in_current_yi[-1] != bar_eos_id:
-                     generated_events_final.append(Event(type_="Bar", value="EOS"))
-            
+            # Post-generation
+            history_bar_pairs.append((current_xi_ids, [bar_bos_id] + tokens_this_bar, current_yi_attrs, current_yi_attrs))
+            generated_events_final.extend(vocab.decode_sequence_to_events([bar_bos_id] + tokens_this_bar))
+            pbar.set_postfix({"Generated Tokens": total_generated_target_tokens}) # Update progress bar
             if total_generated_target_tokens >= max_output_tokens: break
 
-        print(f"\nGeneration finished. Total target tokens generated: {total_generated_target_tokens}")
+        print(f"\nGeneration finished. Total target tokens: {total_generated_target_tokens}")
         return generated_events_final
 
 

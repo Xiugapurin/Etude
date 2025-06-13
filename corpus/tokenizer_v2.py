@@ -20,6 +20,7 @@ TGT_CLASS_ID = 2
 
 IDX_2_POS = {0: 0.0, 1: 1/6, 2: 1/4, 3: 1/3, 4: 1/2, 5: 2/3, 6: 3/4, 7: 5/6}
 ALLOWED_DURATION = [0.0, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1.0, 1.5, 2.0, 3.0, 4.0]
+ALLOWED_DURATIONS_IN_16THS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
 
 @dataclass
 class Event:
@@ -233,6 +234,72 @@ class MidiTokenizer:
             self.tempo_data = json.load(f)
         self._create_measures()
 
+
+    def _detect_and_link_grace_notes(self, midi_data: list[dict]) -> list[dict]:
+        """
+        Detects grace notes, adds 'grace_info' to the main note, and removes the original grace note.
+        """
+        if not midi_data:
+            return []
+        
+        # Sort by onset time, then pitch, to have a deterministic order
+        notes = sorted(midi_data, key=lambda x: (x['onset'], x['pitch']))
+        
+        notes_to_keep = [True] * len(notes)
+        
+        for i in range(len(notes) - 1):
+            if not notes_to_keep[i]:
+                continue
+            
+            # The potential grace note
+            grace_candidate = notes[i]
+            
+            # Look for a main note immediately after
+            for j in range(i + 1, len(notes)):
+                main_candidate = notes[j]
+
+                # If the time difference is too large, stop searching for this grace_candidate
+                onset_diff = main_candidate['onset'] - grace_candidate['onset']
+                if onset_diff >= 0.1:
+                    break
+
+                # Check conditions
+                pitch_diff = main_candidate['pitch'] - grace_candidate['pitch']
+                
+                if 1e-6 < onset_diff < 0.1 and abs(pitch_diff) == 1:
+                    # Found a grace note!
+                    # Add grace_info to the main note. Value is 1 or -1.
+                    # grace_info = -pitch_diff doesn't work. It should be based on which is higher.
+                    grace_value = 1 if grace_candidate['pitch'] > main_candidate['pitch'] else -1
+                    main_candidate['grace_info'] = grace_value
+
+                    # Mark the grace note for removal
+                    notes_to_keep[i] = False
+                    
+                    # A grace note can only be attached to one main note, so break the inner loop
+                    break
+
+        # Create the final list of notes
+        final_notes = [notes[i] for i in range(len(notes)) if notes_to_keep[i]]
+        return final_notes
+
+    def _map_duration_to_token_value(self, duration_sec: float, bpm: float) -> int:
+        """
+        Calculates duration in 16th notes and maps it to the closest allowed duration token.
+        """
+        if duration_sec <= 0 or bpm <= 0:
+            return ALLOWED_DURATIONS_IN_16THS[0]
+        
+        seconds_per_beat = 60.0 / bpm
+        seconds_per_16th_note = seconds_per_beat / 4.0
+        
+        duration_in_16ths = duration_sec / seconds_per_16th_note
+        
+        closest_duration = min(ALLOWED_DURATIONS_IN_16THS, key=lambda x: abs(x - duration_in_16ths))
+        
+        return closest_duration
+    
+
     def _compute_rel_pos(self, note_onset: float, measure_start: float, measure_end: float, time_sig: int, allow_triplet: bool = True) -> tuple[int, bool]:
         rel_pos_2_idx = {0: 0, 1/4: 2, 1/2: 4, 3/4: 6, 1: 8} # quantized pos -> pos idx
 
@@ -332,157 +399,24 @@ class MidiTokenizer:
     def _assign_notes(self, midi_data: list[dict]) -> None:
         for note in midi_data:
             note_onset = note["onset"]
-
             for m_idx, m in enumerate(self.global_measures):
                 if m["start"] <= note_onset < m["end"]:
                     pos_idx, is_last = self._compute_rel_pos(note_onset, m["start"], m["end"], m["time_sig"], allow_triplet=False)
+                    
+                    # Calculate duration
+                    duration_sec = note["offset"] - note["onset"]
+                    duration = self._map_duration_to_token_value(duration_sec, m["bpm"])
+
+                    note_info = {**note, "duration": duration}
 
                     if is_last and m_idx + 1 < len(self.global_measures):
-                        self.global_measures[m_idx + 1]["notes"].append({
-                            **note,
-                            "pos_idx": 0
-                        })
-                        self.global_measures[m_idx + 1]["chords"][0].append({
-                            "pitch": note["pitch"],
-                            "onset": note_onset,
-                        })
+                        target_measure = self.global_measures[m_idx + 1]
+                        target_measure["notes"].append({**note_info, "pos_idx": 0})
+                        target_measure["chords"][0].append(note_info)
                     elif not is_last:
-                        m["notes"].append({
-                            **note,
-                            "pos_idx": pos_idx
-                        })
-                        m["chords"][pos_idx].append({
-                            "pitch": note["pitch"],
-                            "onset": note_onset,
-                        })
-
+                        m["notes"].append({**note_info, "pos_idx": pos_idx})
+                        m["chords"][pos_idx].append(note_info)
                     break
-            
-    # def _adjust_notes(self) -> None:
-    #     pos_to_delete = []
-    #     notes_to_append = []
-    #     for m_idx, m in enumerate(self.global_measures):
-    #         for pos_idx, notes in m["chords"].items():
-    #             if pos_idx % 2 == 0: continue
-
-    #             b_idx, b_rel_idx = divmod(pos_idx, 8)
-
-    #             with_4th = (b_idx * 8) in m["chords"]
-    #             with_8th = (b_idx * 8 + 4) in m["chords"]
-    #             with_16th = (b_idx * 8 + 2) in m["chords"]
-
-    #             # # Triplet 1/3 and 2/3 within notes in 4-th beats (pos_idx = 0, 8, 16, 24), and with 8-th beats (pos_idx = 4, 12, 20, 28) are not valid
-    #             # # Triplet 1/6 and 5/6 within notes in 4-th & 8-th beats (pos_idx = 0, 4, 8, 12, 16, 20, 24, 28), and with 16-th (pos_idx = 2, 6, ..., 30) beats are not valid
-    #             if ((b_rel_idx == 3 or b_rel_idx == 5) and (not with_4th or with_8th)) or \
-    #                 ((b_rel_idx == 1 or b_rel_idx == 7) and ((not with_4th and not with_8th) or with_16th)):
-    #                 pos_to_delete.append((m_idx, pos_idx))
-
-    #                 for note in notes:
-    #                     new_pos_idx, is_last = self._compute_rel_pos(note["onset"], m["start"], m["end"], m["time_sig"], allow_triplet=False)
-    #                     if is_last and m_idx + 1 < len(self.global_measures):
-    #                         notes_to_append.append({
-    #                             **note,
-    #                             "m_idx": m_idx + 1,
-    #                             "pos_idx": 0
-    #                         })
-    #                     elif not is_last:
-    #                         notes_to_append.append({
-    #                             **note,
-    #                             "m_idx": m_idx,
-    #                             "pos_idx": new_pos_idx
-    #                         })
-                
-    #     for m_idx, pos_idx in pos_to_delete:
-    #         del self.global_measures[m_idx]["chords"][pos_idx]
-        
-    #     for note in notes_to_append:
-    #         m_idx = note["m_idx"]
-    #         pos_idx = note["pos_idx"]
-
-    #         self.global_measures[m_idx]["chords"][pos_idx].append({
-    #             "pitch": note["pitch"],
-    #             "onset": note["onset"],
-    #         })
-
-    def _adjust_notes(self) -> None:
-        """
-        調整三連音位置，不在遍歷過程中修改 chords 結構，避免誤讀已刪除的 pos。
-
-        流程：
-          1. 先遍歷所有 measure，並 snapshot 每個 measure.chords 的 keys。
-          2. 根據新規則檢測違規的 pos_idx，將需刪除的位置收集到 pos_to_delete，
-             並將重定位後的 note 暫存到 notes_to_append。
-          3. 遍歷完所有 measure 之後，統一執行刪除與追加，絕不在遍歷時修改 chords。
-        """
-        pos_to_delete: list[tuple[int, int]] = []
-        notes_to_append: dict[int, list[dict]] = defaultdict(list)
-
-        # 1) 掃描所有 measure，收集違規 pos 及重定位後的 note
-        for m_idx, m in enumerate(self.global_measures):
-            # snapshot chords keys，免得之後刪除影響迴圈
-            chord_keys = list(m["chords"].keys())
-
-            for pos_idx in chord_keys:
-                # 只關注奇數 pos（可能是三連音）
-                if pos_idx % 2 == 0:
-                    continue
-
-                notes_at_pos = m["chords"][pos_idx]
-                b_idx, b_rel_idx = divmod(pos_idx, 8)
-                beat_start = b_idx * 8
-                # 取出此 beat 區間內所有 pos
-                positions_in_beat = {
-                    p for p in chord_keys
-                    if beat_start <= p < beat_start + 8
-                }
-
-                invalid = False
-                # 規則 1：四分三連音 (b_rel_idx 3 or 5)
-                if b_rel_idx in (3, 5):
-                    allowed = {beat_start, beat_start+3, beat_start+4, beat_start+5}
-                    if (beat_start not in positions_in_beat) or not positions_in_beat.issubset(allowed):
-                        invalid = True
-
-                # 規則 2.1：八分三連音 (b_rel_idx == 1)
-                elif b_rel_idx == 1:
-                    if (beat_start not in positions_in_beat) or ((beat_start+2) in positions_in_beat):
-                        invalid = True
-
-                # 規則 2.2：八分三連音 (b_rel_idx == 7)
-                elif b_rel_idx == 7:
-                    if ((beat_start+4) not in positions_in_beat) or ((beat_start+6) in positions_in_beat):
-                        invalid = True
-
-                # 若違規，收集刪除與重新定位資訊
-                if invalid:
-                    pos_to_delete.append((m_idx, pos_idx))
-                    for note_dict in notes_at_pos:
-                        new_pos_idx, is_last = self._compute_rel_pos(
-                            note_dict["onset"],
-                            m["start"],
-                            m["end"],
-                            m["time_sig"],
-                            allow_triplet=False
-                        )
-                        target_m_idx = m_idx + 1 if is_last and (m_idx + 1) < len(self.global_measures) else m_idx
-                        target_pos = 0 if (is_last and target_m_idx != m_idx) else new_pos_idx
-                        # 準備要追加的 note（去掉 m_idx, pos_idx）
-                        notes_to_append[target_m_idx].append({
-                            **note_dict,
-                            "pos_idx": target_pos
-                        })
-
-        # 2) 遍歷完後，統一刪除、再統一追加
-        for m_idx, pos_idx in pos_to_delete:
-            self.global_measures[m_idx]["chords"].pop(pos_idx, None)
-
-        for m_idx, note_list in notes_to_append.items():
-            chords = self.global_measures[m_idx]["chords"]
-            for nd in note_list:
-                chords.setdefault(nd["pos_idx"], []).append({
-                    # 只保留原 note 欄位 (pitch, onset, offset, ...)
-                    k: v for k, v in nd.items() if k != "pos_idx"
-                })
 
 
     def _add_bar_event(self, bos: bool = True, time_sig: int = 4) -> None:
@@ -497,31 +431,35 @@ class MidiTokenizer:
         self.all_events.append(Event(type_="Pos", value=pos_idx))
 
 
-    def encode(self, midi_path: str) -> list[Event]:
+    def encode(self, midi_path: str, with_grace_note: bool = False) -> list[Event]:
         with open(midi_path, 'r') as f:
             midi_data = json.load(f)
 
-        self._assign_notes(midi_data)
-        # self._adjust_notes()
+        # Pre-process to find grace notes
+        if with_grace_note:
+            processed_midi_data = self._detect_and_link_grace_notes(midi_data)
+            self._assign_notes(processed_midi_data)
+        else:
+            self._assign_notes(midi_data)
 
         for m_idx, m in enumerate(self.global_measures):
-            m["chords"] = {k: v for k, v in sorted(m["chords"].items(), key=lambda x: x[0])}
-            self._add_bar_event(bos=True, time_sig=m["time_sig"])
+            m["chords"] = {k: v for k, v in sorted(m["chords"].items())}
+            self._add_bar_event(bos=True)
 
             for pos_idx, note_list in m["chords"].items():
                 note_list.sort(key=lambda x: -x["pitch"])
-                unique_notes = []
-                seen = set()
-                for n in note_list:
-                    if n["pitch"] not in seen:
-                        unique_notes.append(n)
-                        seen.add(n["pitch"])
+                unique_notes = [n for i, n in enumerate(note_list) if n["pitch"] not in {p["pitch"] for p in note_list[:i]}]
                 m["chords"][pos_idx] = unique_notes
 
             for pos_idx, notes in m["chords"].items():
                 self._add_pos_event(pos_idx)
                 for note in notes:
+                    # If the note has grace info, add the Grace token first
+                    if 'grace_info' in note:
+                        self.all_events.append(Event(type_="Grace", value=note['grace_info']))
+                    
                     self.all_events.append(Event(type_="Note", value=note["pitch"]))
+                    self.all_events.append(Event(type_="Duration", value=note["duration"]))
 
             self._add_bar_event(bos=False)
         
@@ -802,135 +740,121 @@ class MidiTokenizer:
         score.write('musicxml', fp=path_out)
 
     def decode_to_notes(self, events: list[Event]) -> list[dict]:
-        n_measures_global = len(self.global_measures)
-        if n_measures_global != events.count(Event(type_="Bar", value="BOS")):
-            raise ValueError("Number of measures in events does not match the number of measures in the Tempo data.")
-
-        parsed_chords = self._parse_chords(events)
-        r_chord_list, l_chord_list = self._split_hands(parsed_chords)
-
         decoded_notes = []
+        event_idx, measure_idx = 0, 0
+        num_events = len(events)
+        
+        current_onset_sec = 0.0
+        current_measure = None
+        pending_grace_value = None
 
-        def process_hand_chords(hand_chords: list[dict]):
-            num_chords = len(hand_chords)
-            for i, chord_item in enumerate(hand_chords):
-                onset_sec = chord_item["onset"]
-                rel_pos_current = chord_item["rel_pos"]
-                pitches = chord_item["pitches"]
+        while event_idx < num_events:
+            event = events[event_idx]
 
-                if i < num_chords - 1:
-                    rel_pos_next = hand_chords[i+1]["rel_pos"]
-                else:
-                    current_m_idx = rel_pos_current[0]
-                    rel_pos_next = (current_m_idx + 2, 0)
+            if event.type_ == "Bar" and event.value == "BOS":
+                current_measure = self.global_measures[measure_idx] if measure_idx < len(self.global_measures) else None
+                measure_idx += 1
+                event_idx += 1
+                continue
 
-                duration_ql = self._calc_pos_diff(rel_pos_current, rel_pos_next)
+            if current_measure is None:
+                event_idx += 1; continue
 
-                current_m_idx = rel_pos_current[0]
-                if current_m_idx >= len(self.global_measures):
-                    bpm = 120
-                    print(f"Warning: m_idx {current_m_idx} out of bounds for global_measures. Using default BPM {bpm}.")
-                else:
-                    current_measure_info = self.global_measures[current_m_idx]
-                    bpm = current_measure_info["bpm"]
+            if event.type_ == "Pos":
+                b_idx, b_rel_pos = self._parse_pos_idx(event.value)
+                seconds_per_beat = 60.0 / current_measure["bpm"]
+                current_onset_sec = current_measure["start"] + ((b_idx + b_rel_pos) * seconds_per_beat)
+                event_idx += 1
+                continue
+            
+            # [NEW] Handle Grace token: store it and wait for the main note
+            if event.type_ == "Grace":
+                pending_grace_value = event.value
+                event_idx += 1
+                continue
+
+            if event.type_ == "Note":
+                main_note_pitch = event.value
                 
-                seconds_per_beat = 60.0 / bpm
-                duration_sec = duration_ql * seconds_per_beat
+                if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration":
+                    duration_event = events[event_idx + 1]
+                    duration_token = duration_event.value
+                    
+                    seconds_per_beat = 60.0 / current_measure["bpm"]
+                    seconds_per_16th = seconds_per_beat / 4.0
+                    duration_sec = duration_token * seconds_per_16th
+                    main_note_offset = current_onset_sec + duration_sec
 
-                offset_sec = onset_sec + duration_sec
-
-                for pitch in pitches:
-                    note = {
-                        "pitch": pitch,
-                        "onset": onset_sec,
-                        "offset": offset_sec,
+                    # Add the main note
+                    decoded_notes.append({
+                        "pitch": main_note_pitch,
+                        "onset": current_onset_sec,
+                        "offset": main_note_offset,
                         "velocity": 80
-                    }
-                    decoded_notes.append(note)
+                    })
 
-        process_hand_chords(r_chord_list)
-        process_hand_chords(l_chord_list)
+                    # [NEW] If a grace note was pending, create it now
+                    if pending_grace_value is not None:
+                        grace_pitch = main_note_pitch + pending_grace_value
+                        grace_onset = current_onset_sec - 0.05
+                        grace_offset = current_onset_sec
+                        decoded_notes.append({
+                            "pitch": grace_pitch,
+                            "onset": grace_onset,
+                            "offset": grace_offset,
+                            "velocity": 65 # Typically softer
+                        })
+                        pending_grace_value = None # Reset pending grace
 
+                    event_idx += 2 # Consume Note and Duration
+                else:
+                    print(f"Warning: Note event at index {event_idx} not followed by Duration. Skipping.")
+                    event_idx += 1
+                continue
+            
+            event_idx += 1
+            
         decoded_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
-
         return decoded_notes
 
-    # def decode_to_notes(self, events: list[Event]) -> list[dict]:
-    #     n, m = len(events), len(self.global_measures)
-    #     if m != events.count(Event(type_="Bar", value="BOS")):
-    #         raise ValueError("Number of measures in events does not match the number of measures in the Tempo data.")
-        
-    #     decoded_notes = []
-    #     e_idx = m_idx = 0
-    #     while e_idx < n:
-    #         event = events[e_idx]
-    #         if event.type_ == "Bar" and event.value == "BOS":
-    #             measure = self.global_measures[m_idx]
-    #             m_start = measure["start"]
-    #             m_end = measure["end"]
-    #             m_duration = m_end - m_start
-    #             m_b_duration = m_duration / measure["time_sig"]
-
-    #             e_idx += 1
-    #             while e_idx < n and events[e_idx].type_ != "Bar":
-    #                 if events[e_idx].type_ == "TimeSig":
-    #                     e_idx += 1
-    #                     continue
-
-    #                 if events[e_idx].type_ == "Pos":
-    #                     pos_idx = events[e_idx].value
-    #                     # b_idx, b_rel_idx = divmod(pos_idx, 8)
-    #                     # b_rel_pos = IDX_2_POS[b_rel_idx]
-    #                     b_idx, b_rel_pos = self._parse_pos_idx(pos_idx)
-    #                     onset = m_start + (b_idx + b_rel_pos) * m_b_duration
-    #                     e_idx += 1
-    #                     continue
-                    
-    #                 note_set = set()
-    #                 while e_idx < n and events[e_idx].type_ == "Note":
-    #                     note_set.add(events[e_idx].value)
-    #                     e_idx += 1
-
-    #                 for pitch in note_set:
-    #                     note = {
-    #                         "pitch": pitch,
-    #                         "onset": onset,
-    #                         "offset": onset + 1.5,
-    #                         "velocity": 60 if pitch < 60 else 80
-    #                     }
-    #                     decoded_notes.append(note)
-    #         else:
-    #             m_idx += 1
-    #             e_idx += 1
-
-    #     return decoded_notes
-
     
-    def restore(self):
-        idx_2_rel_pos = {0: 0, 1: 1/6, 2: 1/4, 3: 1/3, 4: 1/2, 5: 2/3, 6: 3/4, 7: 5/6}
+    def restore(self) -> list[dict]:
+        """
+        Restores notes from the internal global_measures structure, using the new duration_token info.
+        """
         restored_notes = []
+        idx_2_rel_pos = {v: k for k, v in IDX_2_POS.items()} # Invert for lookup
 
         for m in self.global_measures:
             m_start = m["start"]
-            m_end = m["end"]
-            m_duration = m_end - m_start
-            m_b_duration = m_duration / m["time_sig"]
-
+            m_bpm = m["bpm"]
+            seconds_per_beat = 60.0 / m_bpm
+            
             for note in m["notes"]:
+                # Calculate onset
                 pos_idx = note["pos_idx"]
                 b_idx, b_rel_idx = divmod(pos_idx, 8)
-                b_rel_pos = idx_2_rel_pos[b_rel_idx]
+                b_rel_pos = idx_2_rel_pos.get(b_rel_idx, 0.0)
+                beats_into_measure = b_idx + b_rel_pos
+                onset_sec = m_start + (beats_into_measure * seconds_per_beat)
 
-                onset = m_start + (b_idx + b_rel_pos) * m_b_duration
+                # Calculate offset from duration_token
+                duration_token = note.get("duration_token")
+                if duration_token is not None:
+                    seconds_per_16th = seconds_per_beat / 4.0
+                    duration_sec = duration_token * seconds_per_16th
+                    offset_sec = onset_sec + duration_sec
+                else:
+                    # Fallback if duration_token is missing for some reason
+                    offset_sec = onset_sec + 0.5
 
                 new_note = {
                     "pitch": note["pitch"],
-                    "onset": onset,
-                    "offset": onset + 0.5,
+                    "onset": onset_sec,
+                    "offset": offset_sec,
                     "velocity": note["velocity"]
                 }
                 restored_notes.append(new_note)
 
         restored_notes.sort(key=lambda x: x["onset"])
-
         return restored_notes

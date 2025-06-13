@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 import numpy as np
+import random
 from typing import List, Dict, Tuple, Union, Any
 from tqdm import tqdm
 from collections import defaultdict, Counter
@@ -20,17 +21,16 @@ ATTRIBUTE_PAD_ID = 0
 
 class EtudeDataset(Dataset):
     def __init__(self,
-                 dataset_dir: Union[str, Path],
-                 vocab: 'Vocab',
-                 max_seq_len: int,
-                 cond_suffix: str = '_cond.npy',
-                 tgt_suffix: str = '_tgt.npy',
-                 data_format: str = 'npy',
-                 num_attribute_bins: int = 5,
-                 avg_note_overlap_threshold: float = 0.5,
-                 context_num_past_xy_pairs: int = 6,
-                 verbose_stats: bool = True
-                 ):
+            dataset_dir: Union[str, Path],
+            vocab: 'Vocab',
+            max_seq_len: int,
+            cond_suffix: str = '_cond.npy',
+            tgt_suffix: str = '_tgt.npy',
+            data_format: str = 'npy',
+            num_attribute_bins: int = 3,
+            context_num_past_xy_pairs: int = 4,
+            verbose_stats: bool = True
+        ):
 
         self.dataset_dir = Path(dataset_dir)
         self.vocab = vocab
@@ -38,8 +38,7 @@ class EtudeDataset(Dataset):
         self.cond_suffix = cond_suffix
         self.tgt_suffix = tgt_suffix
         self.data_format = data_format
-        self.num_attribute_bins = num_attribute_bins # Used for attributes other than avg_note_overlap
-        self.avg_note_overlap_threshold = avg_note_overlap_threshold
+        self.num_attribute_bins = num_attribute_bins
         self.context_num_past_xy_pairs = context_num_past_xy_pairs
         self.verbose_stats = verbose_stats
 
@@ -52,62 +51,41 @@ class EtudeDataset(Dataset):
 
         raw_file_pairs = self._find_file_pairs()
         if not raw_file_pairs:
-            print("Warning: No file pairs (songs) found. Dataset will be empty.")
-            self.processed_samples = []; self.full_attribute_stats = {}; self.total_dataset_tokens = 0; return
+            print("Warning: No file pairs found. Dataset will be empty.")
+            self.sample_map = []
+            return
 
-        print("Phase 1: Collecting initial song data (bar IDs and raw attributes)...")
-        all_songs_raw_data = self._collect_initial_song_data(raw_file_pairs)
-        if not all_songs_raw_data:
-            print("Warning: No valid bars after initial data collection.")
-            self.processed_samples = []; self.full_attribute_stats = {}; self.total_dataset_tokens = 0; return
-        
-        # [MODIFIED] 1. Skip filtering and use all data
-        print("Phase 2: Skipping sample filtering. Using all collected bar pairs.")
-        all_songs_data_for_processing = all_songs_raw_data
-        for song_data in all_songs_data_for_processing:
-            # The rest of the pipeline expects the key "bar_attributes_filtered"
-            song_data["bar_attributes_filtered"] = song_data.pop("bar_attributes_unfiltered")
-        self.all_songs_filtered_data = all_songs_data_for_processing
-        
-        all_attributes_for_binning = []
-        for song_data in self.all_songs_filtered_data:
-            for bar_attr_info in song_data["bar_attributes_filtered"]:
-                all_attributes_for_binning.append(bar_attr_info)
+        print("Phase 1: Collecting initial song data...")
+        self.all_songs_data = self._collect_initial_song_data(raw_file_pairs)
+        if not self.all_songs_data:
+            print("Warning: No valid bars after initial data collection."); self.sample_map = []; return
+
+        all_attributes_for_binning = [
+            bar_attr_info
+            for song_data in self.all_songs_data
+            for bar_attr_info in song_data["bar_attributes"]
+        ]
         
         if not all_attributes_for_binning:
-            print("Warning: No attributes available for binning.")
-            self.processed_samples = []; self.full_attribute_stats = {}; self.total_dataset_tokens = 0; return
-        print(f"Collected attributes from all {len(all_attributes_for_binning)} bar pairs for binning.")
+            print("Warning: No attributes available for binning."); self.sample_map = []; return
+        print(f"Collected attributes from all {len(all_attributes_for_binning)} bar pairs.")
 
-        print(f"Phase 3: Calculating bin edges (Hybrid strategy)...")
+        print(f"Phase 2: Calculating bin edges for {self.num_attribute_bins} bins...")
         self.attribute_bin_edges = self._calculate_bin_edges(all_attributes_for_binning)
         
         if self.verbose_stats:
-            # Since no filtering is done, the "raw" and "filtered" data for stats are the same.
-            self.full_attribute_stats = get_attribute_statistics_from_raw(
-                all_attributes_for_binning,
-                all_attributes_for_binning, # Pass the same data for both arguments
-                self.attribute_bin_edges,
-                self.num_attribute_bins
-            )
-        else: self.full_attribute_stats = {}
-
-        print("Phase 4: Preparing final training samples with rolling context...")
-        self.processed_samples = self._prepare_samples_with_rolling_context(self.all_songs_filtered_data)
-        
-        self.total_dataset_tokens = 0
-        if self.processed_samples:
-            for sample in self.processed_samples:
-                self.total_dataset_tokens += len(sample.get("input_ids", []))
-
-        if self.verbose_stats and hasattr(self, 'full_attribute_stats') and self.full_attribute_stats:
-            print("\n--- Detailed Dataset Statistics Report (from EtudeDataset init) ---")
+            self.full_attribute_stats = get_attribute_statistics_from_raw(all_attributes_for_binning, self.attribute_bin_edges)
+            print("\n--- Detailed Dataset Statistics Report ---")
             pprint.pprint(self.full_attribute_stats)
-            self._print_additional_stats(all_attributes_for_binning) 
+            self._print_attribute_dist_stats(all_attributes_for_binning)
 
-        print(f"Dataset initialized. Total training samples (chunks with context): {len(self.processed_samples)}")
-        if self.total_dataset_tokens > 0:
-             print(f"Total tokens in the dataset (sum of input_ids lengths in all chunks): {self.total_dataset_tokens:,}")
+        print("Phase 3: Creating sample map for lazy loading...")
+        self._create_sample_map()
+        
+        if self.verbose_stats:
+            self._print_chunk_stats()
+            
+        print(f"\nDataset initialized. Total training samples (chunks): {len(self.sample_map)}")
 
 
     def _find_file_pairs(self) -> List[Tuple[Path, Path]]:
@@ -246,28 +224,19 @@ class EtudeDataset(Dataset):
         return attrs
 
 
-    def _collect_initial_song_data(self, file_pairs: List[Tuple[Path, Path]]) -> List[Dict[str, Any]]:
+    def _collect_initial_song_data(self, file_pairs: List[Tuple[Path, Path]]) -> List[Dict[str, Any]]: # (no changes)
         all_songs_data = []
-        for pair_idx, (cond_f, tgt_f) in enumerate(tqdm(file_pairs, desc="Phase 1: Collecting initial song data", leave=False)):
-            c_ids_full_song, t_ids_full_song = self._load_sequence(cond_f), self._load_sequence(tgt_f)
-            if not c_ids_full_song or not t_ids_full_song: continue
-            c_bars_song = self._split_into_bars(c_ids_full_song)
-            t_bars_song = self._split_into_bars(t_ids_full_song)
-            song_bar_attributes_unfiltered = []
-            min_num_bars = min(len(c_bars_song), len(t_bars_song))
-            if min_num_bars == 0: continue
-            for b_idx in range(min_num_bars):
-                c_b_ids, t_b_ids = c_bars_song[b_idx], t_bars_song[b_idx]
-                c_feat = self._extract_bar_features(c_b_ids)
-                t_feat = self._extract_bar_features(t_b_ids)
+        for cond_f, tgt_f in tqdm(file_pairs, desc="Collecting song data"):
+            c_ids, t_ids = self._load_sequence(cond_f), self._load_sequence(tgt_f)
+            if not c_ids or not t_ids: continue
+            c_bars, t_bars = self._split_into_bars(c_ids), self._split_into_bars(t_ids)
+            bar_attrs = []
+            for b_idx in range(min(len(c_bars), len(t_bars))):
+                c_feat, t_feat = self._extract_bar_features(c_bars[b_idx]), self._extract_bar_features(t_bars[b_idx])
                 raw_attrs = self._calculate_raw_relative_attributes(c_feat, t_feat)
-                song_bar_attributes_unfiltered.append({
-                    "attributes": raw_attrs, "cond_bar_ids": c_b_ids,
-                    "tgt_bar_ids": t_b_ids, "original_bar_index_in_song": b_idx })
-            if song_bar_attributes_unfiltered:
-                all_songs_data.append({
-                    "file_pair_index": pair_idx, "song_name": cond_f.parent.name,
-                    "bar_attributes_unfiltered": song_bar_attributes_unfiltered })
+                bar_attrs.append({"attributes": raw_attrs, "cond_bar_ids": c_bars[b_idx], "tgt_bar_ids": t_bars[b_idx]})
+            if bar_attrs:
+                all_songs_data.append({"song_name": cond_f.parent.name, "bar_attributes": bar_attrs})
         return all_songs_data
     
 
@@ -313,74 +282,34 @@ class EtudeDataset(Dataset):
 
     def _calculate_bin_edges(self, all_bar_attributes_for_binning: List[Dict[str, Any]]) -> Dict[str, np.ndarray]:
         if not all_bar_attributes_for_binning: return {name: np.array([]) for name in self.get_attributes_for_model()}
-
         bin_edges_map = {}
         attributes_to_bin = self.get_attributes_for_model()
+        percentile_quantiles = [100.0/3.0, 200.0/3.0]
+        std_dev_multipliers = [-1.0, 1.0]
         
-        percentile_quantiles = np.linspace(0, 100, self.num_attribute_bins + 1)[1:-1]
-        std_dev_multipliers = [-0.9, -0.2, 0.2, 0.9] # For 5-bin strategy
-
         for attr_name in attributes_to_bin:
-            current_values = np.array([b_info["attributes"].get(attr_name) for b_info in all_bar_attributes_for_binning
-                                       if b_info["attributes"].get(attr_name) is not None and 
-                                       np.isfinite(b_info["attributes"].get(attr_name))])
-            
-            edges = np.array([])
-            if len(current_values) < 3: # Fallback for very little data
-                 print(f"Warning: Not enough finite data points for '{attr_name}' ({len(current_values)}). Using broad default edges.")
-                 edges = np.linspace(-1, 1, 4)[1:-1] # Default to 2 edges for 3 bins
-            
-            # --- Custom Binning Logic ---
-            elif attr_name == "avg_note_overlap_ratio":
-                print(f"Calculating bin edges for '{attr_name}' using Mean +/- 1*StdDev (3 Bins) method...")
-                mean_val = np.mean(current_values)
-                std_val = np.std(current_values)
-                if std_val < 1e-6:
-                    print(f"  Warning: Std is ~0 for '{attr_name}'. Creating artificial small bins around the mean.")
-                    eps = 1e-3 * (abs(mean_val) if abs(mean_val) > 1e-6 else 1.0)
-                    edges = np.array([mean_val - eps, mean_val + eps])
-                else:
-                    edges = np.array([mean_val - std_val, mean_val + std_val])
-                
-                bin_edges_map[attr_name] = np.sort(np.unique(edges))
-                print(f"  Bin edges for {attr_name}: {np.round(bin_edges_map[attr_name], 4)}")
-                print(f"  (Target 3 bins from 2 edges, got {len(bin_edges_map[attr_name]) + 1} effective bins)")
-                continue
-
-            elif attr_name == "rel_pitch_class_entropy_ratio":
-                print(f"Calculating bin edges for '{attr_name}' using Percentile (Equal Frequency) method...")
+            current_values = np.array([b["attributes"].get(attr_name) for b in all_bar_attributes_for_binning if b["attributes"].get(attr_name) is not None and np.isfinite(b["attributes"].get(attr_name))])
+            if len(current_values) < self.num_attribute_bins:
+                edges = np.array([-0.5, 0.5])
+            # Equal frequency for entropy and note_per_pos
+            elif attr_name in ["rel_pitch_class_entropy_ratio", "rel_note_per_pos_ratio"]:
+                print(f"Calculating bin edges for '{attr_name}' using Percentile method (3 Bins)...")
                 edges = np.percentile(current_values, percentile_quantiles)
-            
-            else: # Default: Standard deviation based method for 5 bins
-                print(f"Calculating bin edges for '{attr_name}' using Standard Deviation (5 Bins) method...")
-                mean_val = np.mean(current_values)
-                std_val = np.std(current_values)
-                if std_val < 1e-6:
-                    print(f"  Warning: Std is ~0 for '{attr_name}'. Creating artificial small bins around the mean.")
-                    eps_std = 1e-3 * (abs(mean_val) if abs(mean_val) > 1e-6 else 1.0)
-                    edges = np.array([mean_val + m * eps_std for m in std_dev_multipliers])
-                else: 
-                    edges = np.array([mean_val + m * std_val for m in std_dev_multipliers])
+            # Std-dev for overlap and coverage
+            else:
+                print(f"Calculating bin edges for '{attr_name}' using StdDev method (3 Bins)...")
+                mean_val, std_val = np.mean(current_values), np.std(current_values)
+                edges = np.array([mean_val + m * std_val for m in std_dev_multipliers]) if std_val > 1e-6 else np.array([mean_val - 1e-3, mean_val + 1e-3])
             
             bin_edges_map[attr_name] = np.sort(np.unique(edges))
-            effective_num_edges = len(bin_edges_map[attr_name])
-            print(f"  Bin edges for {attr_name}: {np.round(bin_edges_map[attr_name], 4)}")
-            print(f"  (Target {self.num_attribute_bins} bins, got {effective_num_edges + 1} effective bins)")
-            
         return bin_edges_map
     
 
     def _get_attribute_bin_id(self, value: float, attr_name: str) -> int:
         edges = self.attribute_bin_edges.get(attr_name)
-        if edges is None or len(edges) == 0:
-            # Fallback based on attribute type
-            if attr_name == "avg_note_overlap_ratio": return 1 # Default to middle bin (of 3)
-            return self.num_attribute_bins // 2 # Default to middle bin (of 5)
+        if edges is None or len(edges) == 0: return 1
         bin_id = np.digitize(value, edges).item()
-        
-        # Ensure bin_id is within the valid range for that attribute
-        max_bin_id = len(edges)
-        return max(0, min(bin_id, max_bin_id))
+        return max(0, min(bin_id, len(edges)))
 
     
     @staticmethod
@@ -390,6 +319,83 @@ class EtudeDataset(Dataset):
                 "rel_note_per_pos_ratio",
                 "rel_pitch_class_entropy_ratio"]
     
+
+    def _create_sample_map(self):
+        self.sample_map = []
+        empty_bar_len = 2 # [BOS, EOS]
+
+        for song_idx, song_data in enumerate(tqdm(self.all_songs_data, desc="Creating sample map")):
+            bar_infos = song_data["bar_attributes"]
+            if not bar_infos: continue
+            
+            for bar_idx in range(len(bar_infos)):
+                # Calculate the length of the full sequence for this bar without building the lists
+                context_len = 0
+                for k in range(self.context_num_past_xy_pairs):
+                    hist_idx = bar_idx - (self.context_num_past_xy_pairs - k)
+                    if hist_idx >= 0:
+                        context_len += len(bar_infos[hist_idx]["cond_bar_ids"])
+                        context_len += len(bar_infos[hist_idx]["tgt_bar_ids"])
+                    else: # Padded context
+                        context_len += 2 * empty_bar_len
+                
+                current_sample_total_len = context_len + \
+                                           len(bar_infos[bar_idx]["cond_bar_ids"]) + \
+                                           len(bar_infos[bar_idx]["tgt_bar_ids"])
+
+                # Create map entries for each chunk that this sample will be split into
+                for chunk_start in range(0, current_sample_total_len, self.max_seq_len):
+                    chunk_end = min(chunk_start + self.max_seq_len, current_sample_total_len)
+                    if chunk_end - chunk_start >= 2: # Ensure chunk is not too small
+                        self.sample_map.append({
+                            "song_idx": song_idx,
+                            "bar_idx": bar_idx,
+                            "slice": slice(chunk_start, chunk_end)
+                        })
+
+    # [NEW] Generates a single full (un-chunked) sample for a given song and bar index.
+    def _get_full_sample_for_bar(self, song_idx: int, bar_idx: int) -> Dict[str, List[Any]]:
+        song_data = self.all_songs_data[song_idx]
+        bar_infos = song_data["bar_attributes"]
+        
+        model_attr_keys = self.get_attributes_for_model()
+        short_names = [k.replace("rel_", "").replace("_ratio", "").replace("avg_", "").replace("_note_overlap", "note_overlap") for k in model_attr_keys]
+        neutral_binned_attrs = {s_name: 1 for s_name in short_names} # Middle bin is always 1
+        empty_bar = [self.bar_bos_id, self.bar_eos_id]
+
+        context_tokens, context_classes, context_attrs = [], [], defaultdict(list)
+
+        for k in range(self.context_num_past_xy_pairs):
+            hist_idx = bar_idx - (self.context_num_past_xy_pairs - k)
+            if hist_idx >= 0:
+                past_x, past_y = bar_infos[hist_idx]["cond_bar_ids"], bar_infos[hist_idx]["tgt_bar_ids"]
+                past_attrs = {s: self._get_attribute_bin_id(bar_infos[hist_idx]["attributes"][k_full], k_full) for s, k_full in zip(short_names, model_attr_keys)}
+                
+                context_tokens.extend(past_x); context_classes.extend([COND_CLASS_ID] * len(past_x))
+                for s in short_names: context_attrs[f"{s}_bin_ids"].extend([past_attrs[s]] * len(past_x))
+                
+                context_tokens.extend(past_y); context_classes.extend([TGT_CLASS_ID] * len(past_y))
+                for s in short_names: context_attrs[f"{s}_bin_ids"].extend([past_attrs[s]] * len(past_y))
+            else:
+                for _ in range(2): # Padded X and Y
+                    context_tokens.extend(empty_bar); context_classes.extend([COND_CLASS_ID] * len(empty_bar))
+                    for s in short_names: context_attrs[f"{s}_bin_ids"].extend([neutral_binned_attrs[s]] * len(empty_bar))
+
+        current_xi, current_yi = bar_infos[bar_idx]["cond_bar_ids"], bar_infos[bar_idx]["tgt_bar_ids"]
+        current_attrs = {s: self._get_attribute_bin_id(bar_infos[bar_idx]["attributes"][k_full], k_full) for s, k_full in zip(short_names, model_attr_keys)}
+
+        context_tokens.extend(current_xi); context_classes.extend([COND_CLASS_ID] * len(current_xi))
+        for s in short_names: context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_xi))
+        
+        input_ids = context_tokens + current_yi
+        class_ids = context_classes + [TGT_CLASS_ID] * len(current_yi)
+        labels = [-100] * len(context_tokens) + current_yi[1:] + [-100]
+        for s in short_names: context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_yi))
+        
+        full_sample = {"input_ids": input_ids, "class_ids": class_ids, "labels": labels}
+        full_sample.update(context_attrs)
+        return full_sample
+
 
     def _prepare_samples_with_rolling_context(self, all_songs_filtered_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         final_training_chunks = []
@@ -495,127 +501,105 @@ class EtudeDataset(Dataset):
     
 
     def __len__(self) -> int:
-        return len(self.processed_samples)
+        return len(self.sample_map)
 
 
+    # [MODIFIED] __getitem__ now uses the sample_map to generate items on-the-fly.
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        if idx >= len(self.processed_samples): raise IndexError("Out of bounds")
-        return self.processed_samples[idx]
+        if idx >= len(self.sample_map):
+            raise IndexError("Index out of bounds")
+
+        map_entry = self.sample_map[idx]
+        song_idx, bar_idx, chunk_slice = map_entry["song_idx"], map_entry["bar_idx"], map_entry["slice"]
+
+        # Generate the full sample for the corresponding bar
+        full_sample = self._get_full_sample_for_bar(song_idx, bar_idx)
+
+        # Slice the generated sample to get the final chunk
+        chunked_sample = {key: value[chunk_slice] for key, value in full_sample.items()}
+        
+        return chunked_sample
     
     
-    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]: # (no changes)
         batch = [item for item in batch if item and item.get("input_ids")]
-        model_attribute_keys = self.get_attributes_for_model()
-        short_attr_names = [
-            key.replace("rel_", "").replace("_ratio", "").replace("_log", "").replace("avg_", "").replace("_note_overlap", "note_overlap")
-            for key in model_attribute_keys
-        ]
-        model_attr_bin_id_keys = [f"{sname}_bin_ids" for sname in short_attr_names]
-        all_keys_for_empty_batch = ["input_ids", "attention_mask", "class_ids", "labels"] + model_attr_bin_id_keys
-
-        if not batch: return {key: torch.empty(0,0,dtype=torch.long) for key in all_keys_for_empty_batch}
-        
-        current_max_len_in_batch = max(len(item["input_ids"]) for item in batch)
+        if not batch: return {}
+        max_len = max(len(item["input_ids"]) for item in batch)
         batch_data = defaultdict(list)
-        keys_from_getitem = ["input_ids", "class_ids", "labels"] + model_attr_bin_id_keys
-
+        short_names = [k.replace("rel_", "").replace("_ratio", "").replace("avg_", "").replace("_note_overlap", "note_overlap") for k in self.get_attributes_for_model()]
+        keys_to_pad = ["input_ids", "class_ids", "labels"] + [f"{s}_bin_ids" for s in short_names]
         for item in batch:
-            s_len = len(item["input_ids"])
-            p_len = current_max_len_in_batch - s_len
-            for key in keys_from_getitem:
-                pad_val_map = {"labels": -100, "input_ids": self.pad_id, "class_ids": PAD_CLASS_ID}
-                pad_val = pad_val_map.get(key, ATTRIBUTE_PAD_ID)
-                batch_data[key].append(item.get(key, []) + [pad_val]*p_len)
-            batch_data["attention_mask"].append([1]*s_len + [0]*p_len)
-        
+            p_len = max_len - len(item["input_ids"])
+            for key in keys_to_pad:
+                pad_val = -100 if key == "labels" else self.pad_id if key == "input_ids" else PAD_CLASS_ID if key == "class_ids" else ATTRIBUTE_PAD_ID
+                batch_data[key].append(item.get(key, []) + [pad_val] * p_len)
+            batch_data["attention_mask"].append([1] * len(item["input_ids"]) + [0] * p_len)
         return {key: torch.tensor(val, dtype=torch.long) for key, val in batch_data.items()}
 
 
     def get_dataloader(self, batch_size: int, shuffle: bool = True, num_workers: int = 0, **kwargs) -> DataLoader:
-        if not self.processed_samples: return DataLoader([])
-        return DataLoader(
-            self, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers,
-            collate_fn=self.collate_fn, pin_memory=torch.cuda.is_available() and num_workers > 0,
-            **kwargs
-        )
+        if not hasattr(self, 'sample_map') or not self.sample_map: return DataLoader([])
+        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=self.collate_fn, **kwargs)
     
-    def _print_additional_stats(self, all_bar_attributes_for_stats: List[Dict[str, Any]]):
-        print("\n--- Additional Dataset Statistics (based on all bar pairs) ---")
-        if hasattr(self, 'attribute_bin_edges') and all_bar_attributes_for_stats:
-            print("  Attribute Bin Distribution (for all bar pairs):")
-            model_attribute_keys = self.get_attributes_for_model()
-            
-            for attr_name_model in model_attribute_keys:
-                binned_ids_for_attr = []
-                for bar_info in all_bar_attributes_for_stats:
-                    raw_value = bar_info["attributes"].get(attr_name_model)
-                    if raw_value is not None and np.isfinite(raw_value):
-                        binned_ids_for_attr.append(self._get_attribute_bin_id(raw_value, attr_name_model))
-                
-                if binned_ids_for_attr:
-                    num_bins_for_attr = len(self.attribute_bin_edges.get(attr_name_model, [])) + 1
-                    counts = np.bincount(binned_ids_for_attr, minlength=num_bins_for_attr)
-                    print(f"    {attr_name_model} (target {num_bins_for_attr} bins):")
-                    for b_idx, count in enumerate(counts):
-                        if b_idx < num_bins_for_attr: print(f"      Bin {b_idx}: {count}")
-                else:
-                    print(f"    No valid data for {attr_name_model} to show bin distribution.")
-        
-        if hasattr(self, 'total_dataset_tokens'):
-            print(f"  Total tokens in final processed_samples: {self.total_dataset_tokens:,}")
-        
-        if self.processed_samples:
-            num_chunks = len(self.processed_samples)
-            avg_tokens_per_chunk = self.total_dataset_tokens / num_chunks if num_chunks > 0 else 0.0
-            print(f"  Average tokens per chunk (non-padded): {avg_tokens_per_chunk:.2f}")
+
+    # [MODIFIED] Removed detailed chunk stats as they are no longer pre-calculated.
+    def _print_attribute_dist_stats(self, all_bar_attributes):
+        print("\n  Attribute Bin Distribution (for all bar pairs):")
+        if hasattr(self, 'attribute_bin_edges'):
+            for attr_name in self.get_attributes_for_model():
+                binned_ids = [self._get_attribute_bin_id(bar["attributes"].get(attr_name), attr_name) for bar in all_bar_attributes if bar["attributes"].get(attr_name) is not None and np.isfinite(bar["attributes"].get(attr_name))]
+                if binned_ids:
+                    counts = np.bincount(binned_ids, minlength=self.num_attribute_bins)
+                    print(f"    {attr_name} (target {self.num_attribute_bins} bins):")
+                    for i, count in enumerate(counts): print(f"      Bin {i}: {count}")
 
 
-def get_attribute_statistics_from_raw( 
-    all_bar_attributes_raw: List[Dict[str, Any]], 
-    filtered_bar_attributes_for_binning: List[Dict[str, Any]], 
-    bin_edges: Dict[str, np.ndarray] = None,
-    num_bins_target: int = 5 
-) -> Dict[str, Any]:
-    stats = {
-        "stats_all_bar_pairs": {},
-        "bin_edges_used": {}, 
-        "binned_distribution": {}
-    }
+    def _print_chunk_stats(self):
+        """Calculates and prints chunk length statistics based on a random sample."""
+        print("\n--- Chunk Length Statistics ---")
+        if not self.sample_map:
+            print("  No samples available to generate statistics.")
+            return
+        
+        # To avoid slow initialization, we compute stats on a random sample of the dataset
+        sample_size = min(10000, len(self.sample_map))
+        print(f"  (Calculating on a random sample of {sample_size} chunks for efficiency...)")
+        
+        random_indices = random.sample(range(len(self.sample_map)), sample_size)
+        
+        chunk_lengths = [len(self[i]["input_ids"]) for i in tqdm(random_indices, desc="Analyzing chunk lengths")]
+        
+        if chunk_lengths:
+            lengths_np = np.array(chunk_lengths)
+            print(f"  - Count: {len(lengths_np)}")
+            print(f"  - Avg: {np.mean(lengths_np):.2f}")
+            print(f"  - Std: {np.std(lengths_np):.2f}")
+            print(f"  - Min: {np.min(lengths_np)}")
+            print(f"  - Max: {np.max(lengths_np)}")
+            print(f"  - Percentiles: 25th={np.percentile(lengths_np, 25):.0f}, 50th={np.median(lengths_np):.0f}, 75th={np.percentile(lengths_np, 75):.0f}, 95th={np.percentile(lengths_np, 95):.0f}")
+
+
+def get_attribute_statistics_from_raw(all_bar_attributes: List[Dict[str, Any]], bin_edges: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    stats = {"stats_all_bar_pairs": {}, "bin_edges_used": {}, "binned_distribution": {}}
     current_model_attributes = EtudeDataset.get_attributes_for_model()
     
     if bin_edges:
-        for k, v_array in bin_edges.items():
-            if k in current_model_attributes:
-                stats["bin_edges_used"][k] = [round(x, 4) for x in v_array.tolist()] if v_array is not None else None
+        stats["bin_edges_used"] = {k: [round(x, 4) for x in v.tolist()] if v is not None else None for k, v in bin_edges.items() if k in current_model_attributes}
     
     print("\n--- Calculating Attribute Statistics (for All Bar Pairs) ---")
     for attr_name in current_model_attributes:
-        raw_values = np.array([b_info["attributes"].get(attr_name) for b_info in all_bar_attributes_raw 
-                               if b_info.get("attributes", {}).get(attr_name) is not None and 
-                               np.isfinite(b_info.get("attributes", {}).get(attr_name))])
+        raw_values = np.array([b["attributes"].get(attr_name) for b in all_bar_attributes if b.get("attributes", {}).get(attr_name) is not None and np.isfinite(b.get("attributes", {}).get(attr_name))])
         if len(raw_values) > 0:
-            stats["stats_all_bar_pairs"][attr_name] = {
-                "mean": float(np.mean(raw_values)), "std": float(np.std(raw_values)),
-                "min": float(np.min(raw_values)), "max": float(np.max(raw_values)),
-                "median": float(np.median(raw_values)), "count": int(len(raw_values)),
-                "percentiles": {"5th":float(np.percentile(raw_values,5)), "25th":float(np.percentile(raw_values,25)),
-                                "75th":float(np.percentile(raw_values,75)), "95th":float(np.percentile(raw_values,95))} }
+            stats["stats_all_bar_pairs"][attr_name] = {"mean": float(np.mean(raw_values)), "std": float(np.std(raw_values)), "min": float(np.min(raw_values)), "max": float(np.max(raw_values)), "median": float(np.median(raw_values)), "count": int(len(raw_values)), "percentiles": {"5th":float(np.percentile(raw_values,5)), "25th":float(np.percentile(raw_values,25)), "75th":float(np.percentile(raw_values,75)), "95th":float(np.percentile(raw_values,95))}}
 
-    if bin_edges and all_bar_attributes_raw:
+    if bin_edges:
         print("\n--- Calculating Binned Distribution (for All Bar Pairs) ---")
         for attr_name in current_model_attributes: 
             current_attr_edges = bin_edges.get(attr_name)
             if current_attr_edges is None: continue
-            
-            values_for_binning = np.array([b_info["attributes"].get(attr_name) for b_info in all_bar_attributes_raw 
-                                           if b_info.get("attributes", {}).get(attr_name) is not None and
-                                           np.isfinite(b_info.get("attributes", {}).get(attr_name))])
-            if len(values_for_binning) == 0: continue
-
-            binned_indices = np.digitize(values_for_binning, current_attr_edges)
-            actual_num_bins_from_edges = len(current_attr_edges) + 1
-            counts = np.bincount(binned_indices, minlength=actual_num_bins_from_edges)
-            stats["binned_distribution"][attr_name] = {
-                f"bin_{k}": int(counts[k]) for k in range(actual_num_bins_from_edges) 
-            }
+            values_for_binning = np.array([b["attributes"].get(attr_name) for b in all_bar_attributes if b.get("attributes", {}).get(attr_name) is not None and np.isfinite(b.get("attributes", {}).get(attr_name))])
+            if len(values_for_binning) > 0:
+                binned_indices = np.digitize(values_for_binning, current_attr_edges)
+                counts = np.bincount(binned_indices, minlength=len(current_attr_edges) + 1)
+                stats["binned_distribution"][attr_name] = {f"bin_{k}": int(counts[k]) for k in range(len(counts))}
     return stats
