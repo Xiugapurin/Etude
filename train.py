@@ -44,22 +44,30 @@ CONTEXT_NUM_PAST_XY_PAIRS = 4
 NUM_ATTRIBUTE_BINS = 3
 
 MODEL_PARAMS = {
-    "hidden_size": 512, "num_hidden_layers": 8, "num_attention_heads": 8,
-    "intermediate_size": 2048, "hidden_act": "gelu", "max_position_embeddings": 1024,
-    "dropout_prob": 0.1, "num_classes": 3, "pad_class_id": PAD_CLASS_ID,
-    "rotary_pct": 0.25, "rotary_emb_base": 10000, "initializer_range": 0.02,
-    "layer_norm_eps": 1e-5, "use_cache": True, "bos_token_id": None,
-    "eos_token_id": None, "tie_word_embeddings": False,
+    "hidden_size": 512, 
+    "num_hidden_layers": 8, 
+    "num_attention_heads": 8,
+    "intermediate_size": 2048, 
+    "hidden_act": "gelu", 
+    "max_position_embeddings": 1024,
+    "dropout_prob": 0.1, 
+    "num_classes": 3, 
+    "pad_class_id": PAD_CLASS_ID,
+    "rotary_pct": 0.25, 
+    "rotary_emb_base": 10000, 
+    "initializer_range": 0.02,
+    "layer_norm_eps": 1e-5, 
+    "use_cache": True, 
+    "tie_word_embeddings": False,
 
-    # [MODIFIED] 所有屬性均使用 3 個 bins 和 32 維嵌入
     "num_avg_note_overlap_bins": NUM_ATTRIBUTE_BINS,
-    "avg_note_overlap_emb_dim": 32,
-    "num_pitch_coverage_bins": NUM_ATTRIBUTE_BINS,
-    "pitch_coverage_emb_dim": 32,
-    "num_note_per_pos_bins": NUM_ATTRIBUTE_BINS,
-    "note_per_pos_emb_dim": 32,
-    "num_pitch_class_entropy_bins": NUM_ATTRIBUTE_BINS,
-    "pitch_class_entropy_emb_dim": 32,
+    "avg_note_overlap_emb_dim": 64,
+    "num_rel_note_per_pos_bins": NUM_ATTRIBUTE_BINS,
+    "rel_note_per_pos_emb_dim": 64,
+    "num_rel_avg_duration_bins": NUM_ATTRIBUTE_BINS,
+    "rel_avg_duration_emb_dim": 64,
+    "num_rel_avg_silence_bins": NUM_ATTRIBUTE_BINS,
+    "rel_avg_silence_emb_dim": 64,
 
     "attribute_pad_id": ATTRIBUTE_PAD_ID,
     "context_num_past_xy_pairs": CONTEXT_NUM_PAST_XY_PAIRS
@@ -71,7 +79,7 @@ DATA_SAVE_FORMAT = 'npy'
 DATASET_MAX_SEQ_LEN = MODEL_PARAMS["max_position_embeddings"]
 
 NUM_WORKERS_DATALOADER = 4 if sys.platform != 'win32' else 0
-CHECKPOINT_SAVE_EPOCHS = 25
+CHECKPOINT_SAVE_EPOCHS = 10
 LOGGING_STEPS = 10000
 
 
@@ -127,6 +135,9 @@ def train(run_id: Optional[str] = None):
     MODEL_PARAMS['pad_token_id'] = vocab.get_pad_id()
 
     model_config_for_run = EtudeDecoderConfig(**MODEL_PARAMS)
+    with open(MODEL_CONFIG_SAVE_PATH, 'w') as f:
+        json.dump(model_config_for_run.to_dict(), f, indent=2)
+    print(f"Model configuration for this run saved to {MODEL_CONFIG_SAVE_PATH}")
     
     dataset = EtudeDataset(
         dataset_dir=PREPROCESSED_DIR, 
@@ -165,18 +176,18 @@ def train(run_id: Optional[str] = None):
                 class_ids = batch['class_ids'].to(DEVICE, non_blocking=True)
                 labels = batch['labels'].to(DEVICE, non_blocking=True)
                 avg_note_overlap_bin_ids = batch['note_overlap_bin_ids'].to(DEVICE, non_blocking=True)
-                pitch_coverage_bin_ids = batch['pitch_coverage_bin_ids'].to(DEVICE, non_blocking=True)
-                note_per_pos_bin_ids = batch['note_per_pos_bin_ids'].to(DEVICE, non_blocking=True)
-                pitch_class_entropy_bin_ids = batch['pitch_class_entropy_bin_ids'].to(DEVICE, non_blocking=True)
+                rel_note_per_pos_bin_ids = batch['note_per_pos_bin_ids'].to(DEVICE, non_blocking=True)
+                rel_avg_duration_bin_ids = batch['avg_dur_bin_ids'].to(DEVICE, non_blocking=True)
+                rel_avg_silence_bin_ids = batch['avg_sil_bin_ids'].to(DEVICE, non_blocking=True)
             except KeyError as ke: continue
 
             with torch.amp.autocast(device_type=DEVICE.split(':')[0], enabled=(DEVICE == "cuda")):
                 outputs = model(
                     input_ids=input_ids, attention_mask=attention_mask, class_ids=class_ids,
                     avg_note_overlap_bin_ids=avg_note_overlap_bin_ids,
-                    pitch_coverage_bin_ids=pitch_coverage_bin_ids,
-                    note_per_pos_bin_ids=note_per_pos_bin_ids,
-                    pitch_class_entropy_bin_ids=pitch_class_entropy_bin_ids,
+                    rel_note_per_pos_bin_ids=rel_note_per_pos_bin_ids,
+                    rel_avg_duration_bin_ids=rel_avg_duration_bin_ids,
+                    rel_avg_silence_bin_ids=rel_avg_silence_bin_ids,
                     labels=labels, return_dict=True
                 )
                 loss = outputs.loss
@@ -186,9 +197,12 @@ def train(run_id: Optional[str] = None):
             scaler.scale(loss / GRADIENT_ACCUMULATION_STEPS).backward()
             
             if (batch_idx + 1) % GRADIENT_ACCUMULATION_STEPS == 0 or (batch_idx + 1) == len(dataloader):
-                scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP_GRAD_NORM)
-                scaler.step(optimizer); scaler.update()
-                scheduler.step(); optimizer.zero_grad(set_to_none=True)
+                scaler.unscale_(optimizer); 
+                torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP_GRAD_NORM)
+                scaler.step(optimizer); 
+                scaler.update()
+                scheduler.step(); 
+                optimizer.zero_grad(set_to_none=True)
                 global_step += 1
                 pbar.set_postfix({"Loss": f"{loss.item():.4f}", "LR": f"{scheduler.get_last_lr()[0]:.3e}"})
         

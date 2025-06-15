@@ -32,19 +32,16 @@ DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
 DEFAULT_GENERATION_OUTPUT_NOTE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.json"
 DEFAULT_GENERATION_OUTPUT_SCORE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.musicxml"
 
-DEFAULT_MAX_OUTPUT_TOKENS = 10000
+# [MODIFIED] Update max generation length
+DEFAULT_MAX_OUTPUT_TOKENS = 25600
 DEFAULT_MAX_BAR_TOKEN_LIMIT = 512
 DEFAULT_TEMPERATURE = 0
 DEFAULT_TOP_P = 0.9
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# [MODIFIED] Default target attribute bins for generation, handling different bin counts
-NUM_BINS_DEFAULT = 5  # For most attributes (pitch_coverage, note_per_pos, pitch_class_entropy)
-NUM_BINS_ANO = 3      # For avg_note_overlap
-DEFAULT_AVG_NOTE_OVERLAP_BIN = 1 # Middle bin of 3
-DEFAULT_PITCH_COVERAGE_BIN = NUM_BINS_DEFAULT // 2
-DEFAULT_NOTE_PER_POS_BIN = NUM_BINS_DEFAULT // 2
-DEFAULT_PITCH_CLASS_ENTROPY_BIN = NUM_BINS_DEFAULT // 2
+# [MODIFIED] All attributes now use 3 bins. The middle bin (1) is the neutral default.
+NUM_BINS_TOTAL = 3
+DEFAULT_ATTRIBUTE_BIN = NUM_BINS_TOTAL // 2 # = 1
 
 
 # --- Utility Functions ---
@@ -125,7 +122,6 @@ def run_music_generation(args):
 
     print(f"Model will attempt to generate {num_x_bars} target Y bar(s).")
 
-    # [MODIFIED] Prepare target attributes, including the new one.
     target_attributes_per_bar_list = []
     for _ in range(num_x_bars):
         target_attributes_per_bar_list.append({
@@ -156,7 +152,7 @@ def run_music_generation(args):
         note_list = tokenizer.decode_to_notes(generated_event_sequence)
         if note_list: save_notes_to_json(note_list, output_note_file_path)
         try:
-            tokenizer.decode_to_score(generated_event_sequence, path_out=output_score_file_path)
+            # tokenizer.decode_to_score(generated_event_sequence, path_out=output_score_file_path)
             print(f"Score saved to {output_score_file_path}")
         except Exception as e:
             print(f"Error decoding to score: {e}", file=sys.stderr)
@@ -191,22 +187,19 @@ if __name__ == "__main__":
     gen_group.add_argument("--gen_device", type=str, default=DEVICE, choices=["cuda", "cpu"], help="Device to use for generation.")
     gen_group.add_argument("--gen_context_overlap_ratio", type=float, default=0.5, help="Context overlap ratio for truncation in model.generate().")
     
-    # [MODIFIED] Add new attribute argument and update help texts/choices
-    gen_group.add_argument("--gen_avg_note_overlap_bin", type=int, default=DEFAULT_AVG_NOTE_OVERLAP_BIN,
-                           choices=range(NUM_BINS_ANO),
-                           help=f"Target bin ID for average note overlap ratio (0-{NUM_BINS_ANO-1}).")
-    gen_group.add_argument("--gen_pitch_class_entropy_bin", type=int, default=DEFAULT_PITCH_CLASS_ENTROPY_BIN,
-                           choices=range(NUM_BINS_DEFAULT),
-                           help=f"Target bin ID for relative pitch_class_entropy ratio (0-{NUM_BINS_DEFAULT-1}).")
-    gen_group.add_argument("--gen_pitch_coverage_bin", type=int, default=DEFAULT_PITCH_COVERAGE_BIN,
-                           choices=range(NUM_BINS_DEFAULT), 
-                           help=f"Target bin ID for relative pitch coverage (0-{NUM_BINS_DEFAULT-1}).")
-    gen_group.add_argument("--gen_note_per_pos_bin", type=int, default=DEFAULT_NOTE_PER_POS_BIN,
-                           choices=range(NUM_BINS_DEFAULT),
-                           help=f"Target bin ID for relative note_per_pos ratio (0-{NUM_BINS_DEFAULT-1}).")
-        
-    # [REMOVED] Obsolete argument, as this is now read from the model's config.
-    # gen_group.add_argument("--gen_num_past_bars_context", ...)
+    # [MODIFIED] All attribute arguments now use the same range (0-2) and default.
+    gen_group.add_argument("--gen_avg_note_overlap_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN,
+                           choices=range(NUM_BINS_TOTAL),
+                           help=f"Target bin ID for average note overlap ratio (0-{NUM_BINS_TOTAL-1}).")
+    gen_group.add_argument("--gen_pitch_class_entropy_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN,
+                           choices=range(NUM_BINS_TOTAL),
+                           help=f"Target bin ID for relative pitch_class_entropy ratio (0-{NUM_BINS_TOTAL-1}).")
+    gen_group.add_argument("--gen_pitch_coverage_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN,
+                           choices=range(NUM_BINS_TOTAL), 
+                           help=f"Target bin ID for relative pitch coverage (0-{NUM_BINS_TOTAL-1}).")
+    gen_group.add_argument("--gen_note_per_pos_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN,
+                           choices=range(NUM_BINS_TOTAL),
+                           help=f"Target bin ID for relative note_per_pos ratio (0-{NUM_BINS_TOTAL-1}).")
 
     args = parser.parse_args()
     

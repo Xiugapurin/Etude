@@ -111,7 +111,7 @@ class Vocab:
         
         # Attempt to convert value to int if appropriate for known types
         try:
-            if type_ in ["Note", "Pos", "TimeSig"] and value_str: # Add other int types if any
+            if type_ in ["Note", "Pos", "TimeSig", "Duration", "Grace"] and value_str: # Add other int types if any
                 value = int(value_str)
             elif type_ == "Bar" and value_str in ["BOS", "EOS"]: # Specific string values
                 value = value_str
@@ -466,6 +466,82 @@ class MidiTokenizer:
         return self.all_events
     
 
+    def _process_glissandos(self, notes: list[dict]) -> list[dict]:
+        if len(notes) < 3:
+            return notes
+
+        notes_to_add = []
+        indices_to_remove = set()
+        
+        grace_note_map = {i: note for i, note in enumerate(notes) if note.get("is_grace_note", False)}
+        sorted_grace_indices = sorted(grace_note_map.keys())
+
+        i = 0
+        while i < len(sorted_grace_indices):
+            start_grace_idx_in_notes = sorted_grace_indices[i]
+            
+            if start_grace_idx_in_notes in indices_to_remove:
+                i += 1
+                continue
+
+            window_grace_indices = [start_grace_idx_in_notes]
+            first_grace_note = notes[start_grace_idx_in_notes]
+            window_direction = first_grace_note.get('grace_info')
+
+            k = i + 1
+            while k < len(sorted_grace_indices):
+                next_grace_idx_in_notes = sorted_grace_indices[k]
+                next_grace_note = notes[next_grace_idx_in_notes]
+
+                time_span = next_grace_note['onset'] - first_grace_note['onset']
+                if time_span > 1.0:
+                    break
+
+                if next_grace_note.get('grace_info') != window_direction:
+                    break
+                
+                window_grace_indices.append(next_grace_idx_in_notes)
+                k += 1
+
+            if len(window_grace_indices) >= 3:
+                indices_to_remove.update(window_grace_indices)
+                main_note_onsets = {notes[idx]['offset'] for idx in window_grace_indices}
+                for idx, note in enumerate(notes):
+                    if not note.get("is_grace_note") and note['onset'] in main_note_onsets:
+                        indices_to_remove.add(idx)
+                
+                start_note = notes[window_grace_indices[0]]
+                end_note = notes[window_grace_indices[-1]]
+                start_time = start_note['onset']
+                end_time = end_note.get('main_note_offset', end_note['offset'])
+                start_pitch = start_note['main_note_pitch']
+                end_pitch = end_note['main_note_pitch']
+
+                white_keys_mod = {0, 2, 4, 5, 7, 9, 11}
+                pitches_in_run = [notes[idx]['main_note_pitch'] for idx in window_grace_indices]
+                white_key_count = sum(1 for p in pitches_in_run if p % 12 in white_keys_mod)
+                use_white_keys = white_key_count >= (len(pitches_in_run) - white_key_count)
+                is_upward = (window_direction == -1)
+
+                min_p, max_p = min(start_pitch, end_pitch), max(start_pitch, end_pitch)
+                gliss_pitches = [p for p in range(min_p, max_p + 1) if (p % 12 in white_keys_mod) == use_white_keys]
+                
+                if not is_upward: gliss_pitches.reverse()
+                
+                if len(gliss_pitches) > 1:
+                    note_duration = (end_time - start_time) / len(gliss_pitches)
+                    for idx_p, pitch in enumerate(gliss_pitches):
+                        note_onset = start_time + idx_p * note_duration
+                        notes_to_add.append({"pitch": pitch, "onset": note_onset, "offset": note_onset + 0.1, "velocity": 80})
+                
+                i = k
+            else:
+                i += 1
+                
+        final_notes = [note for idx, note in enumerate(notes) if idx not in indices_to_remove]
+        final_notes.extend(notes_to_add)
+
+        return final_notes
     def _parse_chords(self, events: list[Event]) -> list[dict]:
         n, m = len(events), len(self.global_measures)
         if m != events.count(Event(type_="Bar", value="BOS")):
@@ -541,6 +617,7 @@ class MidiTokenizer:
 
         return r_chord_list, l_chord_list
     
+
     def _calc_pos_diff(self, rel_pos_1: tuple[int, int], rel_pos_2: tuple[int, int]) -> int:
         m_idx_1, pos_idx_1 = rel_pos_1
         m_idx_2, pos_idx_2 = rel_pos_2
@@ -740,7 +817,10 @@ class MidiTokenizer:
         score.write('musicxml', fp=path_out)
 
     def decode_to_notes(self, events: list[Event]) -> list[dict]:
-        decoded_notes = []
+        """
+        Decodes events into notes, checks measure boundaries, and processes glissandos.
+        """
+        raw_decoded_notes = []
         event_idx, measure_idx = 0, 0
         num_events = len(events)
         
@@ -752,72 +832,74 @@ class MidiTokenizer:
             event = events[event_idx]
 
             if event.type_ == "Bar" and event.value == "BOS":
-                current_measure = self.global_measures[measure_idx] if measure_idx < len(self.global_measures) else None
-                measure_idx += 1
-                event_idx += 1
-                continue
+                if measure_idx < len(self.global_measures):
+                    current_measure = self.global_measures[measure_idx]
+                measure_idx += 1; event_idx += 1; continue
 
             if current_measure is None:
                 event_idx += 1; continue
 
+            measure_duration_sec = 0.0
+            if measure_idx < len(self.global_measures):
+                measure_duration_sec = self.global_measures[measure_idx]["start"] - current_measure["start"]
+            
+            seconds_per_beat = (measure_duration_sec / current_measure.get("time_sig", 4)) if measure_duration_sec > 1e-6 else (60.0 / current_measure.get("bpm", 120.0))
+
             if event.type_ == "Pos":
                 b_idx, b_rel_pos = self._parse_pos_idx(event.value)
-                seconds_per_beat = 60.0 / current_measure["bpm"]
                 current_onset_sec = current_measure["start"] + ((b_idx + b_rel_pos) * seconds_per_beat)
-                event_idx += 1
-                continue
+                event_idx += 1; continue
             
-            # [NEW] Handle Grace token: store it and wait for the main note
             if event.type_ == "Grace":
                 pending_grace_value = event.value
-                event_idx += 1
-                continue
+                event_idx += 1; continue
 
             if event.type_ == "Note":
+                # [MODIFIED] Boundary Check for main note
+                if not (current_measure["start"] <= current_onset_sec < current_measure["end"]):
+                    print(f"Warning: Skipping note at onset {current_onset_sec:.2f} as it's outside measure {measure_idx-1} boundaries [{current_measure['start']:.2f}, {current_measure['end']:.2f}).")
+                    event_idx += 2 if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration" else 1
+                    continue
+
                 main_note_pitch = event.value
-                
                 if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration":
-                    duration_event = events[event_idx + 1]
-                    duration_token = duration_event.value
-                    
-                    seconds_per_beat = 60.0 / current_measure["bpm"]
-                    seconds_per_16th = seconds_per_beat / 4.0
-                    duration_sec = duration_token * seconds_per_16th
+                    duration_token = events[event_idx + 1].value
+                    duration_sec = duration_token * (seconds_per_beat / 4.0)
                     main_note_offset = current_onset_sec + duration_sec
 
-                    # Add the main note
-                    decoded_notes.append({
-                        "pitch": main_note_pitch,
-                        "onset": current_onset_sec,
-                        "offset": main_note_offset,
-                        "velocity": 80
+                    raw_decoded_notes.append({
+                        "pitch": main_note_pitch, "onset": current_onset_sec,
+                        "offset": main_note_offset, "velocity": 80, "is_grace_note": False
                     })
 
-                    # [NEW] If a grace note was pending, create it now
                     if pending_grace_value is not None:
-                        grace_pitch = main_note_pitch + pending_grace_value
                         grace_onset = current_onset_sec - 0.05
-                        grace_offset = current_onset_sec
-                        decoded_notes.append({
-                            "pitch": grace_pitch,
-                            "onset": grace_onset,
-                            "offset": grace_offset,
-                            "velocity": 65 # Typically softer
-                        })
-                        pending_grace_value = None # Reset pending grace
-
-                    event_idx += 2 # Consume Note and Duration
+                        # [MODIFIED] Boundary check for grace note
+                        if current_measure["start"] <= grace_onset:
+                             raw_decoded_notes.append({
+                                "pitch": main_note_pitch + pending_grace_value,
+                                "onset": grace_onset, "offset": current_onset_sec,
+                                "velocity": 65, "is_grace_note": True,
+                                "main_note_pitch": main_note_pitch # Link to main note
+                            })
+                        pending_grace_value = None
+                    event_idx += 2
                 else:
-                    print(f"Warning: Note event at index {event_idx} not followed by Duration. Skipping.")
                     event_idx += 1
                 continue
             
             event_idx += 1
-            
-        decoded_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
-        return decoded_notes
+        
+        # Sort before post-processing
+        raw_decoded_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
 
+        final_notes = self._process_glissandos(raw_decoded_notes)
+        
+        # Final sort
+        final_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
+        return final_notes
     
+
     def restore(self) -> list[dict]:
         """
         Restores notes from the internal global_measures structure, using the new duration_token info.
