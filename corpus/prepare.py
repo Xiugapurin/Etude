@@ -12,6 +12,7 @@ from corpus.tokenizer_v2 import MidiTokenizer, Vocab
 from corpus.dataset import EtudeDataset
 
 # --- Configuration ---
+DATASET_DIR = Path("./dataset/")
 BASE_DATA_DIR = Path("./dataset/synced/")
 PREPROCESSED_DIR = Path("./dataset/tokenized/")
 VOCAB_PATH = PREPROCESSED_DIR / "vocab.json"
@@ -47,7 +48,7 @@ for original_dir in tqdm(original_subdirs, desc="Scanning & Tokenizing"):
     if not (tempo_file.exists() and cond_file.exists() and tgt_file.exists()): continue
     try:
         cond_tokenizer = MidiTokenizer(str(tempo_file))
-        cond_events = cond_tokenizer.encode(str(cond_file))
+        cond_events = cond_tokenizer.encode(str(cond_file), with_grace_note=False)
         tgt_tokenizer = MidiTokenizer(str(tempo_file))
         tgt_events = tgt_tokenizer.encode(str(tgt_file), with_grace_note=True)
         if cond_events and tgt_events:

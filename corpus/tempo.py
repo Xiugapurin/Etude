@@ -260,8 +260,8 @@ class TempoInfoGenerator:
             print("未偵測到任何穩定區域，無法生成節奏資訊。")
             return
 
-        processed_regions = self._harmonize_tempo_regions(processed_regions, global_time_sig)
-        processed_regions = self._merge_similar_regions(processed_regions, global_time_sig)
+        # processed_regions = self._harmonize_tempo_regions(processed_regions, global_time_sig)
+        # processed_regions = self._merge_similar_regions(processed_regions, global_time_sig)
 
         final_output = []
         for region in processed_regions:

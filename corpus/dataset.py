@@ -106,6 +106,16 @@ class EtudeDataset(Dataset):
         
         return chunked_sample
 
+    @staticmethod
+    def get_attributes_for_model() -> List[str]:
+        return [
+            "avg_note_overlap_ratio",
+            "rel_note_per_pos_ratio",
+            "rel_avg_duration_ratio",
+            "rel_pos_density_ratio"
+        ]
+    
+
     def _find_file_pairs(self) -> List[Tuple[Path, Path]]:
         file_pairs = []
         print(f"Scanning {self.dataset_dir} for processed data subdirectories...")
@@ -142,7 +152,7 @@ class EtudeDataset(Dataset):
             elif token_id == self.bar_eos_id:
                 if in_bar: current_bar.append(token_id); bars.append(current_bar); current_bar = []; in_bar = False
             elif in_bar: current_bar.append(token_id)
-        if current_bar and in_bar and current_bar[-1] != self.bar_eos_id: # If last bar not ended, add EOS
+        if current_bar and in_bar and current_bar[-1] != self.bar_eos_id:
             current_bar.append(self.bar_eos_id)
         if current_bar and len(current_bar) > 1 and current_bar[0] == self.bar_bos_id and current_bar[-1] == self.bar_eos_id:
              bars.append(current_bar)
@@ -152,13 +162,12 @@ class EtudeDataset(Dataset):
     def _extract_bar_features(self, bar_ids: List[int]) -> Dict[str, Any]:
         events = self.vocab.decode_sequence_to_events(bar_ids)
         note_count, pos_event_count, total_duration_in_16ths = 0, 0, 0
-        notes_by_position, pos_values = defaultdict(list), []
+        notes_by_position = defaultdict(list)
 
         for i, ev in enumerate(events):
             if ev.type_ == "Pos" and isinstance(ev.value, int):
                 pos_event_count += 1
                 current_pos = ev.value
-                pos_values.append(ev.value)
             elif ev.type_ == "Note" and isinstance(ev.value, int):
                 note_count += 1
                 if 'current_pos' in locals():
@@ -170,20 +179,8 @@ class EtudeDataset(Dataset):
             "note_count": note_count, 
             "pos_event_count": pos_event_count, 
             "notes_by_position": notes_by_position,
-            "total_duration_in_16ths": total_duration_in_16ths, 
-            "pos_values": sorted(list(set(pos_values)))
+            "total_duration_in_16ths": total_duration_in_16ths
         }
-    
-    @staticmethod
-    def _calculate_avg_silence(pos_values: list, max_pos: int) -> float:
-        if not pos_values and max_pos == 0: return 0.0
-        
-        positions = pos_values.copy()
-        if not positions or positions[0] != 0: positions.insert(0, 0)
-        if positions[-1] != max_pos: positions.append(max_pos)
-        
-        gaps = np.diff(positions)
-        return np.mean(gaps) if len(gaps) > 0 else 0.0
     
 
     def _calculate_raw_relative_attributes(self, cond_bar_features: dict, tgt_bar_features: dict) -> dict:
@@ -197,30 +194,26 @@ class EtudeDataset(Dataset):
             ratios = [(sum(1 for t in tnbp.get(p,[]) if t%12 in {c%12 for c in cnbp.get(p,[])}) / len(tnbp[p])) if tnbp.get(p) else (1.0 if not cnbp.get(p) else 0.0) for p in all_pos]
             attrs["avg_note_overlap_ratio"] = np.mean(ratios) if ratios else 0.0
         
-        # Attribute 2: rel_note_per_pos_ratio (no log, new 0-handling)
+        # Attribute 2: rel_note_per_pos_ratio (unchanged logic)
         cond_npp = cond_bar_features["note_count"] / cond_bar_features["pos_event_count"] if cond_bar_features["pos_event_count"] > 0 else 0
         tgt_npp = tgt_bar_features["note_count"] / tgt_bar_features["pos_event_count"] if tgt_bar_features["pos_event_count"] > 0 else 0
         if cond_npp == 0 and tgt_npp == 0: attrs["rel_note_per_pos_ratio"] = 1.0
         elif cond_npp == 0 or tgt_npp == 0: attrs["rel_note_per_pos_ratio"] = 0.0
         else: attrs["rel_note_per_pos_ratio"] = tgt_npp / cond_npp
 
-        # Attribute 3: rel_avg_duration_ratio (new, no log)
+        # Attribute 3: rel_avg_duration_ratio (unchanged logic)
         avg_dur_cond = cond_bar_features["total_duration_in_16ths"] / cond_bar_features["note_count"] if cond_bar_features["note_count"] > 0 else 0
         avg_dur_tgt = tgt_bar_features["total_duration_in_16ths"] / tgt_bar_features["note_count"] if tgt_bar_features["note_count"] > 0 else 0
         if avg_dur_cond == 0 and avg_dur_tgt == 0: attrs["rel_avg_duration_ratio"] = 1.0
         elif avg_dur_cond == 0 or avg_dur_tgt == 0: attrs["rel_avg_duration_ratio"] = 0.0
         else: attrs["rel_avg_duration_ratio"] = avg_dur_tgt / avg_dur_cond
 
-        # Attribute 4: rel_avg_silence_ratio (new, no log)
-        cond_pos, tgt_pos = cond_bar_features["pos_values"], tgt_bar_features["pos_values"]
-        max_pos = 0
-        if cond_pos: max_pos = max(max_pos, cond_pos[-1])
-        if tgt_pos: max_pos = max(max_pos, tgt_pos[-1])
-        avg_silence_cond = self._calculate_avg_silence(cond_pos, max_pos)
-        avg_silence_tgt = self._calculate_avg_silence(tgt_pos, max_pos)
-        if avg_silence_cond == 0 and avg_silence_tgt == 0: attrs["rel_avg_silence_ratio"] = 1.0
-        elif avg_silence_cond == 0 or avg_silence_tgt == 0: attrs["rel_avg_silence_ratio"] = 0.0
-        else: attrs["rel_avg_silence_ratio"] = avg_silence_tgt / avg_silence_cond
+        # Attribute 4: rel_pos_density_ratio (new)
+        cond_pos_count = cond_bar_features["pos_event_count"]
+        tgt_pos_count = tgt_bar_features["pos_event_count"]
+        if cond_pos_count == 0 and tgt_pos_count == 0: attrs["rel_pos_density_ratio"] = 1.0
+        elif cond_pos_count == 0 or tgt_pos_count == 0: attrs["rel_pos_density_ratio"] = 0.0
+        else: attrs["rel_pos_density_ratio"] = tgt_pos_count / cond_pos_count
         
         return attrs
 
@@ -241,46 +234,6 @@ class EtudeDataset(Dataset):
         return all_songs_data
     
 
-    def _filter_songs_by_note_overlap(self, all_songs_raw_data: List[Dict[str, Any]], total_raw_bar_pairs: int) -> List[Dict[str, Any]]:
-        filtered_songs_data = []
-        for song_data in tqdm(all_songs_raw_data, desc="Phase 2: Filtering by note overlap", leave=False):
-            current_song_cond_bars_filtered = []
-            current_song_tgt_bars_filtered = []
-            current_song_attributes_filtered = []
-            for bar_info in song_data["bar_attributes_unfiltered"]:
-                avg_overlap = bar_info["attributes"].get("avg_note_overlap_ratio", 0.0)
-                if avg_overlap >= self.avg_note_overlap_threshold:
-                    # Correction: This filter condition was inverted. It should be LESS THAN the threshold.
-                    # Assuming the goal is to filter out pairs that are TOO similar.
-                    # Re-reading the code: `if avg_overlap >= self.avg_note_overlap_threshold:`
-                    # This means it KEEPS pairs with high overlap. The prompt implies filtering out, let's assume the existing code is what's intended.
-                    # I will keep the logic as is and just report the numbers.
-                    pass # This bar pair is filtered out, do nothing
-                else:
-                    current_song_cond_bars_filtered.append(bar_info["cond_bar_ids"])
-                    current_song_tgt_bars_filtered.append(bar_info["tgt_bar_ids"])
-                    current_song_attributes_filtered.append(bar_info) # Keep full bar_info (attributes, orig_idx etc)
-
-            if current_song_cond_bars_filtered:
-                filtered_songs_data.append({
-                    "file_pair_index": song_data["file_pair_index"],
-                    "song_name": song_data["song_name"],
-                    "cond_bar_ids_list": current_song_cond_bars_filtered,
-                    "tgt_bar_ids_list": current_song_tgt_bars_filtered,
-                    "bar_attributes_filtered": current_song_attributes_filtered })
-        
-        retained_bar_pairs = sum(len(s['cond_bar_ids_list']) for s in filtered_songs_data)
-        print(f"Retained {retained_bar_pairs} bar pairs from "
-              f"{len(filtered_songs_data)} songs after overlap filtering.")
-
-        if total_raw_bar_pairs > 0:
-            filtered_out_count = total_raw_bar_pairs - retained_bar_pairs
-            filtered_out_percentage = (filtered_out_count / total_raw_bar_pairs) * 100
-            print(f"Filtered out {filtered_out_count} bar pairs ({filtered_out_percentage:.2f}%) due to avg_note_overlap_ratio.")
-        
-        return [s for s in filtered_songs_data if s["cond_bar_ids_list"]]
-
-
     def _calculate_bin_edges(self, all_bar_attributes_for_binning: List[Dict[str, Any]]) -> Dict[str, np.ndarray]:
         if not all_bar_attributes_for_binning: return {name: np.array([]) for name in self.get_attributes_for_model()}
         
@@ -289,10 +242,13 @@ class EtudeDataset(Dataset):
         
         for attr_name in attributes_to_bin:
             # --- Select std multipliers based on attribute name ---
-            if attr_name in ["rel_note_per_pos_ratio", "rel_avg_silence_ratio"]:
+            if attr_name == "rel_pos_density_ratio":
+                std_dev_multipliers = [-0.2, 0.2]
+                print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.5 std)...")
+            elif attr_name == "rel_note_per_pos_ratio":
                 std_dev_multipliers = [-0.5, 0.5]
                 print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.5 std)...")
-            elif attr_name == "rel_avg_duration_ratio" or attr_name == "avg_note_overlap_ratio":
+            elif attr_name in ["rel_avg_duration_ratio", "avg_note_overlap_ratio"]:
                 std_dev_multipliers = [-0.7, 0.7]
                 print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.7 std)...")
             else:
@@ -320,16 +276,6 @@ class EtudeDataset(Dataset):
         if edges is None or len(edges) == 0: return 1
         bin_id = np.digitize(value, edges).item()
         return max(0, min(bin_id, len(edges)))
-
-    
-    @staticmethod
-    def get_attributes_for_model() -> List[str]:
-        return [
-            "avg_note_overlap_ratio",
-            "rel_note_per_pos_ratio",
-            "rel_avg_duration_ratio",
-            "rel_avg_silence_ratio"
-        ]
     
 
     def _create_sample_map(self):
@@ -370,54 +316,32 @@ class EtudeDataset(Dataset):
         song_data = self.all_songs_data[song_idx]
         bar_infos = song_data["bar_attributes"]
         model_attr_keys = self.get_attributes_for_model()
-        short_name_map = {
-            "avg_note_overlap_ratio": "note_overlap", 
-            "rel_note_per_pos_ratio": "note_per_pos",
-            "rel_avg_duration_ratio": "avg_dur", 
-            "rel_avg_silence_ratio": "avg_sil"
-        }
-
+        short_name_map = {"avg_note_overlap_ratio": "note_overlap", "rel_note_per_pos_ratio": "note_per_pos",
+                          "rel_avg_duration_ratio": "avg_dur", "rel_pos_density_ratio": "pos_dens"}
         short_names = [short_name_map[k] for k in model_attr_keys]
         neutral_binned_attrs = {s_name: 1 for s_name in short_names}
         empty_bar = [self.bar_bos_id, self.bar_eos_id]
         context_tokens, context_classes, context_attrs = [], [], defaultdict(list)
-
         for k in range(self.context_num_past_xy_pairs):
             hist_idx = bar_idx - (self.context_num_past_xy_pairs - k)
             if hist_idx >= 0:
                 past_x, past_y = bar_infos[hist_idx]["cond_bar_ids"], bar_infos[hist_idx]["tgt_bar_ids"]
                 past_attrs = {s: self._get_attribute_bin_id(bar_infos[hist_idx]["attributes"][k_full], k_full) for s, k_full in zip(short_names, model_attr_keys)}
                 for item_ids, class_id in [(past_x, COND_CLASS_ID), (past_y, TGT_CLASS_ID)]:
-                    context_tokens.extend(item_ids); 
-                    context_classes.extend([class_id] * len(item_ids))
-                    for s in short_names: 
-                        context_attrs[f"{s}_bin_ids"].extend([past_attrs[s]] * len(item_ids))
+                    context_tokens.extend(item_ids); context_classes.extend([class_id] * len(item_ids))
+                    for s in short_names: context_attrs[f"{s}_bin_ids"].extend([past_attrs[s]] * len(item_ids))
             else:
-                for _ in range(2):
-                    context_tokens.extend(empty_bar); 
-                    context_classes.extend([COND_CLASS_ID] * len(empty_bar))
-                    for s in short_names: 
-                        context_attrs[f"{s}_bin_ids"].extend([neutral_binned_attrs[s]] * len(empty_bar))
-
+                for class_id in [COND_CLASS_ID, TGT_CLASS_ID]:
+                    context_tokens.extend(empty_bar); context_classes.extend([class_id] * len(empty_bar))
+                    for s in short_names: context_attrs[f"{s}_bin_ids"].extend([neutral_binned_attrs[s]]*len(empty_bar))
         current_xi, current_yi = bar_infos[bar_idx]["cond_bar_ids"], bar_infos[bar_idx]["tgt_bar_ids"]
         current_attrs = {s: self._get_attribute_bin_id(bar_infos[bar_idx]["attributes"][k_full], k_full) for s, k_full in zip(short_names, model_attr_keys)}
-        
-        context_tokens.extend(current_xi); 
-        context_classes.extend([COND_CLASS_ID] * len(current_xi))
-
-        for s in short_names: 
-            context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_xi))
-        
-        full_sample = {
-            "input_ids": context_tokens + current_yi, 
-            "class_ids": context_classes + [TGT_CLASS_ID] * len(current_yi),
-            "labels": [-100] * len(context_tokens) + current_yi[1:] + [-100]
-        }
-
-        for s in short_names: 
-            context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_yi))
+        context_tokens.extend(current_xi); context_classes.extend([COND_CLASS_ID] * len(current_xi))
+        for s in short_names: context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_xi))
+        full_sample = {"input_ids": context_tokens + current_yi, "class_ids": context_classes + [TGT_CLASS_ID] * len(current_yi),
+                       "labels": [-100] * len(context_tokens) + current_yi[1:] + [-100]}
+        for s in short_names: context_attrs[f"{s}_bin_ids"].extend([current_attrs[s]] * len(current_yi))
         full_sample.update(context_attrs)
-
         return full_sample
 
     
@@ -426,13 +350,8 @@ class EtudeDataset(Dataset):
         if not batch: return {}
         max_len = max(len(item["input_ids"]) for item in batch)
         batch_data = defaultdict(list)
-        short_name_map = {
-            "avg_note_overlap_ratio": "note_overlap", 
-            "rel_note_per_pos_ratio": "note_per_pos",
-            "rel_avg_duration_ratio": "avg_dur", 
-            "rel_avg_silence_ratio": "avg_sil"
-        }
-
+        short_name_map = {"avg_note_overlap_ratio": "note_overlap", "rel_note_per_pos_ratio": "note_per_pos",
+                          "rel_avg_duration_ratio": "avg_dur", "rel_pos_density_ratio": "pos_dens"}
         short_names = [short_name_map[k] for k in self.get_attributes_for_model()]
         keys_to_pad = ["input_ids", "class_ids", "labels"] + [f"{s}_bin_ids" for s in short_names]
         for item in batch:

@@ -856,7 +856,7 @@ class MidiTokenizer:
 
             if event.type_ == "Note":
                 # [MODIFIED] Boundary Check for main note
-                if not (current_measure["start"] <= current_onset_sec < current_measure["end"]):
+                if not (current_measure["start"] <= current_onset_sec < current_measure["end"]) or current_onset_sec < 0:
                     print(f"Warning: Skipping note at onset {current_onset_sec:.2f} as it's outside measure {measure_idx-1} boundaries [{current_measure['start']:.2f}, {current_measure['end']:.2f}).")
                     event_idx += 2 if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration" else 1
                     continue

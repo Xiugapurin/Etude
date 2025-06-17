@@ -6,9 +6,9 @@ import pretty_midi
 import soundfile as sf
 from pydub import AudioSegment
 import IPython.display as ipd
-from scipy.io.wavfile import write
 from midi_player import MIDIPlayer
 from midi_player.stylers import basic
+from midi2audio import FluidSynth
 
 def json_to_midi(json_path, output_path):
     midi = pretty_midi.PrettyMIDI()
@@ -122,3 +122,7 @@ def align_and_play_stereo(wav_path1, wav_path2, output_path):
 
     ipd.display(ipd.Audio(temp_path))
     sf.write(output_path, stereo_array, 22050)
+
+def midi_to_wav(input_midi_path, output_wav_path, sound_font_path):
+    fs = FluidSynth(sound_font_path)
+    fs.midi_to_audio(input_midi_path, output_wav_path)

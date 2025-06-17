@@ -72,8 +72,8 @@ class EtudeDecoderConfig(PretrainedConfig):
         rel_note_per_pos_emb_dim: int = 64,
         num_rel_avg_duration_bins: int = 3,
         rel_avg_duration_emb_dim: int = 64,
-        num_rel_avg_silence_bins: int = 3,
-        rel_avg_silence_emb_dim: int = 64,
+        num_rel_pos_density_bins: int = 3,
+        rel_pos_density_emb_dim: int = 64,
         
         attribute_pad_id: int = 0,
         context_num_past_xy_pairs: int = 4,
@@ -99,8 +99,8 @@ class EtudeDecoderConfig(PretrainedConfig):
         self.rel_note_per_pos_emb_dim = rel_note_per_pos_emb_dim
         self.num_rel_avg_duration_bins = num_rel_avg_duration_bins
         self.rel_avg_duration_emb_dim = rel_avg_duration_emb_dim
-        self.num_rel_avg_silence_bins = num_rel_avg_silence_bins
-        self.rel_avg_silence_emb_dim = rel_avg_silence_emb_dim
+        self.num_rel_pos_density_bins = num_rel_pos_density_bins
+        self.rel_pos_density_emb_dim = rel_pos_density_emb_dim
         
         self.attribute_pad_id = attribute_pad_id
         self.context_num_past_xy_pairs = context_num_past_xy_pairs
@@ -120,12 +120,12 @@ class EtudeDecoder(PreTrainedModel):
             config.num_rel_note_per_pos_bins, config.rel_note_per_pos_emb_dim, padding_idx=config.attribute_pad_id)
         self.rel_avg_duration_embeddings = nn.Embedding(
             config.num_rel_avg_duration_bins, config.rel_avg_duration_emb_dim, padding_idx=config.attribute_pad_id)
-        self.rel_avg_silence_embeddings = nn.Embedding(
-            config.num_rel_avg_silence_bins, config.rel_avg_silence_emb_dim, padding_idx=config.attribute_pad_id)
+        self.rel_pos_density_embeddings = nn.Embedding(
+            config.num_rel_pos_density_bins, config.rel_pos_density_emb_dim, padding_idx=config.attribute_pad_id)
         
         total_attribute_concat_dim = (
             config.avg_note_overlap_emb_dim + config.rel_note_per_pos_emb_dim +
-            config.rel_avg_duration_emb_dim + config.rel_avg_silence_emb_dim
+            config.rel_avg_duration_emb_dim + config.rel_pos_density_emb_dim
         )
         self.attribute_projection_layer = nn.Linear(total_attribute_concat_dim, config.hidden_size)
 
@@ -166,7 +166,7 @@ class EtudeDecoder(PreTrainedModel):
         avg_note_overlap_bin_ids: Optional[torch.LongTensor] = None,
         rel_note_per_pos_bin_ids: Optional[torch.LongTensor] = None,
         rel_avg_duration_bin_ids: Optional[torch.LongTensor] = None,
-        rel_avg_silence_bin_ids: Optional[torch.LongTensor] = None,
+        rel_pos_density_bin_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -178,7 +178,7 @@ class EtudeDecoder(PreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if inputs_embeds is None:
-            if any(arg is None for arg in [input_ids, class_ids, avg_note_overlap_bin_ids, rel_note_per_pos_bin_ids, rel_avg_duration_bin_ids, rel_avg_silence_bin_ids]):
+            if any(arg is None for arg in [input_ids, class_ids, avg_note_overlap_bin_ids, rel_note_per_pos_bin_ids, rel_avg_duration_bin_ids, rel_pos_density_bin_ids]):
                 raise ValueError("`input_ids`, `class_ids`, and all four attribute bin IDs must be provided.")
 
             word_embeds = self.word_embeddings(input_ids)
@@ -188,7 +188,7 @@ class EtudeDecoder(PreTrainedModel):
                 self.avg_note_overlap_embeddings(avg_note_overlap_bin_ids),
                 self.rel_note_per_pos_embeddings(rel_note_per_pos_bin_ids),
                 self.rel_avg_duration_embeddings(rel_avg_duration_bin_ids),
-                self.rel_avg_silence_embeddings(rel_avg_silence_bin_ids)
+                self.rel_pos_density_embeddings(rel_pos_density_bin_ids)
             ], dim=-1)
             
             inputs_embeds = word_embeds + cls_embeds + self.attribute_projection_layer(attr_embs)
@@ -207,9 +207,14 @@ class EtudeDecoder(PreTrainedModel):
         if not return_dict:
             return ((loss,) + (logits,) + transformer_outputs[1:]) if loss is not None else ((logits,) + transformer_outputs[1:])
         
-        return CausalLMOutputWithPast(loss=loss, logits=logits, past_key_values=transformer_outputs.past_key_values,
-                                      hidden_states=transformer_outputs.hidden_states, attentions=transformer_outputs.attentions)
-    
+        return CausalLMOutputWithPast(
+            loss=loss, logits=logits, 
+            past_key_values=transformer_outputs.past_key_values,
+            hidden_states=transformer_outputs.hidden_states, 
+            attentions=transformer_outputs.attentions
+        )
+        
+
     @torch.no_grad()
     def generate(
         self,
@@ -241,8 +246,7 @@ class EtudeDecoder(PreTrainedModel):
         history_bar_pairs: List[Tuple[List[int], List[int], Dict[str, int], Dict[str, int]]] = []
         
         empty_bar_ids = [bar_bos_id, bar_eos_id]
-        neutral_attributes = { "note_overlap_bin": 1, "note_per_pos_bin": 1,
-                               "avg_dur_bin": 1, "avg_sil_bin": 1 }
+        neutral_attributes = {"note_overlap_bin": 1, "note_per_pos_bin": 1, "avg_dur_bin": 1, "pos_dens_bin": 1}
         
         pbar = tqdm(range(len(all_x_bars)), desc="Generating Bars", unit="bar")
         for i in pbar:
@@ -255,59 +259,76 @@ class EtudeDecoder(PreTrainedModel):
             history_to_use = history_bar_pairs[-num_past_xy_pairs_for_context:]
             padding_needed = num_past_xy_pairs_for_context - len(history_to_use)
 
+            # A. Fill with empty history, assigning correct Class IDs
             for _ in range(padding_needed):
-                for class_id in [COND_CLASS_ID, TGT_CLASS_ID]:
-                    prompt_tokens.extend(empty_bar_ids)
-                    p_classes.extend([class_id] * len(empty_bar_ids))
-                    for key in attr_keys: p_attr_lists[key].extend([neutral_attributes[key]] * len(empty_bar_ids))
+                # Pad X_empty (Condition)
+                prompt_tokens.extend(empty_bar_ids)
+                p_classes.extend([COND_CLASS_ID] * len(empty_bar_ids))
+                for key in attr_keys: 
+                    p_attr_lists[key].extend([neutral_attributes[key]] * len(empty_bar_ids))
+                
+                # Pad Y_empty (Target) - This is the corrected part
+                prompt_tokens.extend(empty_bar_ids)
+                p_classes.extend([TGT_CLASS_ID] * len(empty_bar_ids)) # Use TGT_CLASS_ID for padded Y
+                for key in attr_keys: 
+                    p_attr_lists[key].extend([neutral_attributes[key]] * len(empty_bar_ids))
 
+            # B. Add actual history
             for x_ids, y_ids, x_attrs, y_attrs in history_to_use:
                 for item_ids, attrs, class_id in [(x_ids, x_attrs, COND_CLASS_ID), (y_ids, y_attrs, TGT_CLASS_ID)]:
-                    prompt_tokens.extend(item_ids); p_classes.extend([class_id]*len(item_ids))
-                    for key in attr_keys: p_attr_lists[key].extend([attrs[key]] * len(item_ids))
+                    prompt_tokens.extend(item_ids); 
+                    p_classes.extend([class_id] * len(item_ids))
+                    for key in attr_keys: 
+                        p_attr_lists[key].extend([attrs[key]] * len(item_ids))
 
-            prompt_tokens.extend(current_xi_ids); p_classes.extend([COND_CLASS_ID]*len(current_xi_ids))
-            for key in attr_keys: p_attr_lists[key].extend([current_yi_attrs[key]] * len(current_xi_ids))
+            # C. Add current Xi
+            prompt_tokens.extend(current_xi_ids); 
+            p_classes.extend([COND_CLASS_ID] * len(current_xi_ids))
+            for key in attr_keys: 
+                p_attr_lists[key].extend([current_yi_attrs[key]] * len(current_xi_ids))
             
             if len(prompt_tokens) > self.config.max_position_embeddings - max_bar_token_limit:
                 keep_len = int(self.config.max_position_embeddings * context_overlap_ratio)
                 prompt_tokens, p_classes = prompt_tokens[-keep_len:], p_classes[-keep_len:]
-                for key in attr_keys: p_attr_lists[key] = p_attr_lists[key][-keep_len:]
+                for key in attr_keys: 
+                    p_attr_lists[key] = p_attr_lists[key][-keep_len:]
 
             tokens_this_bar, kv_cache = [], None
             
             input_ids = torch.tensor([prompt_tokens + [bar_bos_id]], device=device)
             class_ids = torch.tensor([p_classes + [TGT_CLASS_ID]], device=device)
-
-            attr_ids = {"note_overlap": torch.tensor([p_attr_lists["note_overlap_bin"] + [current_yi_attrs["note_overlap_bin"]]], device=device),
-                        "note_per_pos": torch.tensor([p_attr_lists["note_per_pos_bin"] + [current_yi_attrs["note_per_pos_bin"]]], device=device),
-                        "avg_dur": torch.tensor([p_attr_lists["avg_dur_bin"] + [current_yi_attrs["avg_dur_bin"]]], device=device),
-                        "avg_sil": torch.tensor([p_attr_lists["avg_sil_bin"] + [current_yi_attrs["avg_sil_bin"]]], device=device)}
+            attr_ids = {key: torch.tensor([p_attr_lists[key] + [current_yi_attrs[key]]], device=device) for key in attr_keys}
             attention_mask = torch.ones_like(input_ids)
             
             for _ in range(max_bar_token_limit):
                 if total_generated_target_tokens >= max_output_tokens: break
                 
                 outputs = self(
-                    input_ids=input_ids, attention_mask=attention_mask, class_ids=class_ids, past_key_values=kv_cache,
-                    avg_note_overlap_bin_ids=attr_ids["note_overlap"], rel_note_per_pos_bin_ids=attr_ids["note_per_pos"],
-                    rel_avg_duration_bin_ids=attr_ids["avg_dur"], rel_avg_silence_bin_ids=attr_ids["avg_sil"]
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask, 
+                    class_ids=class_ids, 
+                    past_key_values=kv_cache, 
+                    use_cache=True,
+                    avg_note_overlap_bin_ids=attr_ids["note_overlap_bin"],
+                    rel_note_per_pos_bin_ids=attr_ids["note_per_pos_bin"],
+                    rel_avg_duration_bin_ids=attr_ids["avg_dur_bin"],
+                    rel_pos_density_bin_ids=attr_ids["pos_dens_bin"]
                 )
-                next_logits = outputs.logits[:, -1, :]; kv_cache = outputs.past_key_values
+                next_logits = outputs.logits[:, -1, :]
+                kv_cache = outputs.past_key_values
                 
                 if temperature > 0:
                     probs = F.softmax(next_logits / temperature, dim=-1)
                     if 0 < top_p < 1.0:
                         sorted_probs, sorted_indices = torch.sort(probs, descending=True)
                         cum_probs = torch.cumsum(sorted_probs, dim=-1)
-                        indices_to_remove = cum_probs > top_p; 
-                        indices_to_remove[..., 1:] = indices_to_remove[..., :-1].clone(); 
+                        indices_to_remove = cum_probs > top_p
+                        indices_to_remove[..., 1:] = indices_to_remove[..., :-1].clone()
                         indices_to_remove[..., 0] = 0
                         probs[0, sorted_indices[0, indices_to_remove[0]]] = 0
                         probs = probs / probs.sum()
                     next_token_id = torch.multinomial(probs, 1).squeeze().item()
-                else: 
-                    next_token_id = torch.argmax(next_logits, dim=-1).item()
+                else: next_token_id = torch.argmax(next_logits, dim=-1).item()
                 
                 tokens_this_bar.append(next_token_id)
                 total_generated_target_tokens += 1
@@ -315,19 +336,17 @@ class EtudeDecoder(PreTrainedModel):
 
                 input_ids = torch.tensor([[next_token_id]], device=device)
                 class_ids = torch.tensor([[TGT_CLASS_ID]], device=device)
-                attr_ids = {key: torch.tensor([[current_yi_attrs[f"{key}_bin"]]], device=device) for key in neutral_attributes.keys()}
+                attr_ids = {key: torch.tensor([[current_yi_attrs[key]]], device=device) for key in attr_keys}
                 attention_mask = torch.cat([attention_mask, torch.ones((1,1), device=device)], dim=1)
 
             history_bar_pairs.append((current_xi_ids, [bar_bos_id] + tokens_this_bar, current_yi_attrs, current_yi_attrs))
-            if len(history_bar_pairs) > num_past_xy_pairs_for_context: 
-                history_bar_pairs.pop(0)
+            if len(history_bar_pairs) > num_past_xy_pairs_for_context: history_bar_pairs.pop(0)
             generated_events_final.extend(vocab.decode_sequence_to_events([bar_bos_id] + tokens_this_bar))
             pbar.set_postfix({"Generated Tokens": total_generated_target_tokens})
             if total_generated_target_tokens >= max_output_tokens: break
 
         print(f"\nGeneration finished. Total target tokens: {total_generated_target_tokens}")
         return generated_events_final
-
 
 def load_model(config_path: str, checkpoint_path: Optional[str] = None, device: str = "cpu") -> EtudeDecoder:
     try:
