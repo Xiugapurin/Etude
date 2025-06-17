@@ -177,7 +177,7 @@ def train(run_id: Optional[str] = None):
                 avg_note_overlap_bin_ids = batch['note_overlap_bin_ids'].to(DEVICE, non_blocking=True)
                 rel_note_per_pos_bin_ids = batch['note_per_pos_bin_ids'].to(DEVICE, non_blocking=True)
                 rel_avg_duration_bin_ids = batch['avg_dur_bin_ids'].to(DEVICE, non_blocking=True)
-                rel_avg_silence_bin_ids = batch['pos_dens_bin_ids'].to(DEVICE, non_blocking=True)
+                rel_pos_density_bin_ids = batch['pos_dens_bin_ids'].to(DEVICE, non_blocking=True)
             except KeyError as ke: continue
 
             with torch.amp.autocast(device_type=DEVICE.split(':')[0], enabled=(DEVICE == "cuda")):
@@ -186,7 +186,7 @@ def train(run_id: Optional[str] = None):
                     avg_note_overlap_bin_ids=avg_note_overlap_bin_ids,
                     rel_note_per_pos_bin_ids=rel_note_per_pos_bin_ids,
                     rel_avg_duration_bin_ids=rel_avg_duration_bin_ids,
-                    rel_avg_silence_bin_ids=rel_avg_silence_bin_ids,
+                    rel_pos_density_bin_ids=rel_pos_density_bin_ids,
                     labels=labels, return_dict=True
                 )
                 loss = outputs.loss
