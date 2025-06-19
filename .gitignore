@@ -42,6 +42,5 @@ dataset/eval
 /infer/src/
 /infer/output/
 /infer/test/
-/evaluation/
 /utils/sound_font/
 /midi
