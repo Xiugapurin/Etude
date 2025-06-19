@@ -244,7 +244,7 @@ class EtudeDataset(Dataset):
             # --- Select std multipliers based on attribute name ---
             if attr_name == "rel_pos_density_ratio":
                 std_dev_multipliers = [-0.2, 0.2]
-                print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.5 std)...")
+                print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.2 std)...")
             elif attr_name == "rel_note_per_pos_ratio":
                 std_dev_multipliers = [-0.5, 0.5]
                 print(f"Calculating bin edges for '{attr_name}' using StdDev method (±0.5 std)...")

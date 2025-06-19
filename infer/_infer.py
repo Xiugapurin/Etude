@@ -24,9 +24,9 @@ DEFAULT_BEAT_PRED_FILE = ROOT / "infer" / "src" / "beat_pred.json"
 DEFAULT_EXTRACT_INPUT_AUDIO_NAME = "origin.wav"
 DEFAULT_EXTRACT_OUTPUT_JSON_NAME = "extract.json"
 DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "etude_e.mid"
-DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "12.pth"
+DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "9.pth"
 
-DEFAULT_GENERATION_VOCAB_PATH = ROOT / "dataset" / "vocab.json"
+DEFAULT_GENERATION_VOCAB_PATH = ROOT / "dataset" / "tokenized" / "vocab.json"
 DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoint" / "decoder" / "latest.pth"
 DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoint" / "decoder" / "etude_decoder_config.json"
 DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
@@ -106,7 +106,7 @@ def run_music_generation(args):
             "note_overlap_bin": args.gen_avg_note_overlap_bin,
             "note_per_pos_bin": args.gen_rel_note_per_pos_bin,
             "avg_dur_bin": args.gen_rel_avg_duration_bin,
-            "avg_sil_bin": args.gen_rel_avg_silence_bin
+            "pos_dens_bin": args.gen_rel_pos_density_bin
         })
 
     print(f"\nStarting music generation with {num_x_bars} target attribute sets.")
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     gen_group.add_argument("--gen_avg_note_overlap_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note overlap (0-{NUM_BINS_TOTAL-1})")
     gen_group.add_argument("--gen_rel_note_per_pos_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note density (0-{NUM_BINS_TOTAL-1})")
     gen_group.add_argument("--gen_rel_avg_duration_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for relative average duration (0-{NUM_BINS_TOTAL-1})")
-    gen_group.add_argument("--gen_rel_avg_silence_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for relative average silence (0-{NUM_BINS_TOTAL-1})")
+    gen_group.add_argument("--gen_rel_pos_density_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for positional density (0-{NUM_BINS_TOTAL-1})")
 
     args = parser.parse_args()
     
