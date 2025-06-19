@@ -33,6 +33,7 @@ env/
 
 data/
 dataset/
+dataset/eval
 .cache/
 
 /checkpoint/
@@ -43,3 +44,4 @@ dataset/
 /infer/test/
 /evaluation/
 /utils/sound_font/
+/midi
