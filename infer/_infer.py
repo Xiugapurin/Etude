@@ -24,12 +24,13 @@ DEFAULT_BEAT_PRED_FILE = ROOT / "infer" / "src" / "beat_pred.json"
 DEFAULT_EXTRACT_INPUT_AUDIO_NAME = "origin.wav"
 DEFAULT_EXTRACT_OUTPUT_JSON_NAME = "extract.json"
 DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "etude_e.mid"
-DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "9.pth"
+DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "12.pth"
 
 DEFAULT_GENERATION_VOCAB_PATH = ROOT / "dataset" / "tokenized" / "vocab.json"
-DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoint" / "decoder" / "latest.pth"
+DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoint" / "decoder" / "90.pth"
 DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoint" / "decoder" / "etude_decoder_config.json"
 DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
+DEFAULT_GENERATION_VOLUME_FILE = DEFAULT_SRC_DIR / "volume.json"
 DEFAULT_GENERATION_OUTPUT_NOTE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.json"
 DEFAULT_GENERATION_OUTPUT_SCORE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.musicxml"
 
@@ -40,7 +41,6 @@ DEFAULT_TOP_P = 0.9
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 NUM_BINS_TOTAL = 3
-DEFAULT_ATTRIBUTE_BIN = 1
 
 # --- Utility Functions ---
 def _split_into_bars(id_sequence: list[int], bar_bos_id: int, bar_eos_id: int) -> list[list[int]]:
@@ -100,6 +100,8 @@ def run_music_generation(args):
     num_x_bars = len(_split_into_bars(initial_condition_ids, vocab.get_bar_bos_id(), vocab.get_bar_eos_id())) or 1
     print(f"Model will attempt to generate {num_x_bars} target bar(s).")
 
+    print(f"{args.gen_avg_note_overlap_bin = } \n {args.gen_rel_note_per_pos_bin = } \n {args.gen_rel_avg_duration_bin = } \n {args.gen_rel_pos_density_bin = } \n ")
+
     target_attributes_per_bar_list = []
     for _ in range(num_x_bars):
         target_attributes_per_bar_list.append({
@@ -121,7 +123,7 @@ def run_music_generation(args):
 
     if generated_event_sequence:
         print(f"Generated {len(generated_event_sequence)} events.")
-        note_list = tokenizer.decode_to_notes(generated_event_sequence)
+        note_list = tokenizer.decode_to_notes(events=generated_event_sequence, volume_map_path=DEFAULT_GENERATION_VOLUME_FILE)
         if note_list: 
             save_notes_to_json(note_list, args.gen_output_note_file)
         
@@ -161,10 +163,10 @@ if __name__ == "__main__":
     gen_group.add_argument("--gen_top_p", type=float, default=DEFAULT_TOP_P)
     gen_group.add_argument("--gen_device", type=str, default=DEVICE, choices=["cuda", "cpu"])
     
-    gen_group.add_argument("--gen_avg_note_overlap_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note overlap (0-{NUM_BINS_TOTAL-1})")
-    gen_group.add_argument("--gen_rel_note_per_pos_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note density (0-{NUM_BINS_TOTAL-1})")
-    gen_group.add_argument("--gen_rel_avg_duration_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for relative average duration (0-{NUM_BINS_TOTAL-1})")
-    gen_group.add_argument("--gen_rel_pos_density_bin", type=int, default=DEFAULT_ATTRIBUTE_BIN, choices=range(NUM_BINS_TOTAL), help=f"Target bin for positional density (0-{NUM_BINS_TOTAL-1})")
+    gen_group.add_argument("--gen_avg_note_overlap_bin", type=int, default=2, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note overlap (0-{NUM_BINS_TOTAL-1})")
+    gen_group.add_argument("--gen_rel_note_per_pos_bin", type=int, default=1, choices=range(NUM_BINS_TOTAL), help=f"Target bin for note density (0-{NUM_BINS_TOTAL-1})")
+    gen_group.add_argument("--gen_rel_avg_duration_bin", type=int, default=1, choices=range(NUM_BINS_TOTAL), help=f"Target bin for relative average duration (0-{NUM_BINS_TOTAL-1})")
+    gen_group.add_argument("--gen_rel_pos_density_bin", type=int, default=1, choices=range(NUM_BINS_TOTAL), help=f"Target bin for positional density (0-{NUM_BINS_TOTAL-1})")
 
     args = parser.parse_args()
     

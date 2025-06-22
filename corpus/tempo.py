@@ -1,9 +1,9 @@
-import os
 import json
-from statistics import mode, StatisticsError, median
+from statistics import mode, StatisticsError
 import numpy as np
 import librosa
 import IPython.display as ipd
+import math
 
 
 class TempoInfoGenerator:
@@ -113,116 +113,112 @@ class TempoInfoGenerator:
             else:
                 i += 1
         return stable_regions
-
-    def _harmonize_tempo_regions(self, processed_regions, global_time_sig):
-        """
-        修正 BPM 加倍或減半的區域。
-        """
+    
+    
+    def _patch_region_gaps(self, processed_regions, tolerance=0.25):
         if len(processed_regions) < 2:
             return processed_regions
 
-        # 使用中位數作為參考時長，更穩健
-        all_durations = [r['avg_duration'] for r in processed_regions if r['avg_duration'] > 0]
-        if not all_durations:
-            return processed_regions
-        reference_duration = median(all_durations)
+        patched_regions = []
+        current_region = processed_regions[0]
 
-        if self.verbose:
-            print("\n--- 開始進行速度統一化（Harmonization）---")
-            print(f"[DEBUG] 參考平均時長 (中位數): {reference_duration:.4f}")
-
-        for region in processed_regions:
-            avg_duration = region['avg_duration']
+        for i in range(len(processed_regions) - 1):
+            next_region = processed_regions[i+1]
             
-            # 避免除以零的錯誤
-            if reference_duration <= 0 or avg_duration <= 0:
+            # 不再修改 current_region，直接將其加入最終列表
+            patched_regions.append(current_region)
+            
+            # === 使用您定義的正確邏輯來計算間隙 ===
+            last_downbeat_ts = current_region['downbeats'][-1]
+            measure_duration = current_region['avg_duration']
+            
+            # 1. 計算前一區域最後一個小節的 "理論結束點"
+            theoretical_end_ts = last_downbeat_ts + measure_duration
+            
+            # 2. 計算理論結束點到下一個區域開始點的 "真實間隙"
+            next_region_start_ts = next_region['downbeats'][0]
+            gap_duration = next_region_start_ts - theoretical_end_ts
+            
+            if measure_duration <= 0 or gap_duration < 0:
+                current_region = next_region
+                continue
+            
+            ratio = gap_duration / measure_duration
+            
+            # === 在間隙中插入新的小節區域 ===
+
+            # Case 1: 間隙長度約為 N.5 倍 (0.5, 1.5, 2.5...)
+            if abs(ratio - (math.floor(ratio) + 0.5)) < tolerance:
+                num_full_measures = math.floor(ratio)
+                if self.verbose:
+                    print(f"修復 Case N.5x: 在 {theoretical_end_ts:.3f}s 後的間隙中偵測到 {num_full_measures} 個 4/4 拍和 1 個 2/4 拍")
+                
+                insert_ts = theoretical_end_ts
+                # 插入 N 個完整的 4/4 拍小節
+                for _ in range(num_full_measures):
+                    full_measure_region = {
+                        "time_sig": current_region['time_sig'],
+                        "bpm": current_region['bpm'],
+                        "start_time": insert_ts,
+                        "downbeats": [insert_ts],
+                        "avg_duration": measure_duration
+                    }
+                    patched_regions.append(full_measure_region)
+                    insert_ts += measure_duration
+                
+                # 插入最後的 2/4 拍小節
+                half_measure_region = {
+                    "time_sig": 2,
+                    "bpm": current_region['bpm'],
+                    "start_time": insert_ts,
+                    "downbeats": [insert_ts],
+                    "avg_duration": measure_duration / 2
+                }
+                patched_regions.append(half_measure_region)
+
+            # Case 2: 間隙長度約為 N 倍 (1, 2, 3...)
+            elif abs(ratio - round(ratio)) < tolerance and round(ratio) >= 1:
+                num_full_measures = round(ratio)
+                if self.verbose:
+                    print(f"修復 Case Nx: 在 {theoretical_end_ts:.3f}s 後的間隙中偵測到 {num_full_measures} 個 4/4 拍")
+
+                insert_ts = theoretical_end_ts
+                for _ in range(num_full_measures):
+                    full_measure_region = {
+                        "time_sig": current_region['time_sig'],
+                        "bpm": current_region['bpm'],
+                        "start_time": insert_ts,
+                        "downbeats": [insert_ts],
+                        "avg_duration": measure_duration
+                    }
+                    patched_regions.append(full_measure_region)
+                    insert_ts += measure_duration
+            
+            current_region = next_region
+
+        # 加入最後一個區域
+        patched_regions.append(current_region)
+        
+        # --- 合併邏輯保持不變 ---
+        merged_regions = []
+        if not patched_regions:
+            return []
+
+        for region in patched_regions:
+            if 'bpm' not in region or 'time_sig' not in region:
+                merged_regions.append(region)
                 continue
 
-            # 確保總是大除以小，得到一個大於等於1的比例
-            ratio = avg_duration / reference_duration if avg_duration > reference_duration else reference_duration / avg_duration
-            
-            # 檢查比例是否落在 [1.9, 2.1] 的區間內，並且當前區域是慢速區
-            if 1.9 < ratio < 2.1 and avg_duration > reference_duration:
-                if self.verbose:
-                    print(f"[INFO] 檢測到慢速區域 (時長 {avg_duration:.4f}, 與參考時長比例 {ratio:.2f})，進行小節切分...")
-                
-                original_downbeats = region['downbeats']
-                new_downbeats = []
-                
-                # 將該區域的每個小節從中切開，產生新的 downbeat
-                for i in range(len(original_downbeats) - 1):
-                    db1 = original_downbeats[i]
-                    db2 = original_downbeats[i+1]
-                    midpoint = db1 + (db2 - db1) / 2
-                    new_downbeats.append(db1)
-                    new_downbeats.append(midpoint)
-                new_downbeats.append(original_downbeats[-1]) # 加入最後一個原始 downbeat
-                
-                region['downbeats'] = sorted(new_downbeats)
-                
-                # 重新計算該區域的 avg_duration 和 bpm
-                new_durations = [region['downbeats'][i+1] - region['downbeats'][i] for i in range(len(region['downbeats']) - 1)]
-                if new_durations:
-                    region['avg_duration'] = sum(new_durations) / len(new_durations)
-                    region['bpm'] = (60 * global_time_sig) / region['avg_duration']
-                    if self.verbose:
-                        print(f"[INFO] 修正後: 新平均時長={region['avg_duration']:.4f}, 新BPM={region['bpm']:.2f}")
+            if (merged_regions and 
+                'bpm' in merged_regions[-1] and 'time_sig' in merged_regions[-1] and
+                merged_regions[-1]['time_sig'] == region['time_sig'] and 
+                abs(merged_regions[-1]['bpm'] - region['bpm']) < 1.0):
+                merged_regions[-1]['downbeats'].extend(region['downbeats'])
+            else:
+                merged_regions.append(region)
 
-        if self.verbose:
-            print("--- 速度統一化完成 ---\n")
-            
-        return processed_regions
+        return merged_regions    
 
-    def _merge_similar_regions(self, processed_regions, global_time_sig, threshold=0.1):
-        """
-        合併 BPM (平均時長) 相近的相鄰區域。
-        """
-        if self.verbose:
-            print("\n--- 開始合併相似速度區域 ---")
-        
-        while True:
-            merged_in_this_pass = False
-            i = 0
-            while i < len(processed_regions) - 1:
-                region1 = processed_regions[i]
-                region2 = processed_regions[i+1]
-
-                # 當兩個相鄰區域的平均時長差距小於閾值時，合併
-                if abs(region1['avg_duration'] - region2['avg_duration']) <= threshold:
-                    if self.verbose:
-                        print(f"[INFO] 合併區域 {i} (時長 {region1['avg_duration']:.4f}) 和 {i+1} (時長 {region2['avg_duration']:.4f})")
-                    
-                    # 合併 downbeats 列表
-                    merged_downbeats = sorted(region1['downbeats'] + region2['downbeats'])
-                    
-                    # 創建新區域並重新計算 BPM
-                    new_region = {
-                        "start_time": merged_downbeats[0],
-                        "downbeats": merged_downbeats,
-                        "time_sig": global_time_sig
-                    }
-                    
-                    merged_durations = [merged_downbeats[j+1] - merged_downbeats[j] for j in range(len(merged_downbeats) - 1)]
-                    if merged_durations:
-                        new_avg_duration = sum(merged_durations) / len(merged_durations)
-                        new_region['avg_duration'] = new_avg_duration
-                        new_region['bpm'] = (60 * global_time_sig) / new_avg_duration
-                    else:
-                        new_region['avg_duration'] = 0
-                        new_region['bpm'] = 0
-
-                    # 替換掉舊的區域
-                    processed_regions = processed_regions[:i] + [new_region] + processed_regions[i+2:]
-                    merged_in_this_pass = True
-                    break # 完成一次合併後，從頭開始重新掃描
-                i += 1
-            
-            if not merged_in_this_pass:
-                break # 如果完整掃描一遍都沒有發生合併，則結束
-
-        if self.verbose:
-            print(f"--- 合併完成，剩餘 {len(processed_regions)} 個區域 ---\n")
-        return processed_regions
 
     def generate_tempo_info(self, path_tempo_output: str, path_beats_output: str = ""):
         filtered_beats = self.remove_close_beats()
@@ -260,11 +256,10 @@ class TempoInfoGenerator:
             print("未偵測到任何穩定區域，無法生成節奏資訊。")
             return
 
-        # processed_regions = self._harmonize_tempo_regions(processed_regions, global_time_sig)
-        # processed_regions = self._merge_similar_regions(processed_regions, global_time_sig)
+        final_regions = self._patch_region_gaps(processed_regions)
 
         final_output = []
-        for region in processed_regions:
+        for region in final_regions:
             final_output.append({
                 "time_sig": region['time_sig'],
                 "bpm": region['bpm'],

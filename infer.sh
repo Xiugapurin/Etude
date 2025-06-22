@@ -12,10 +12,11 @@ BEAT_DETECTION_DIR="$SCRIPT_DIR/beat_detection"
 SRC_DIR="$INFER_DIR/src"
 AUDIO_TARGET_PATH="$SRC_DIR/origin.wav"
 SEP_OUTPUT_PATH="$SRC_DIR/sep.npy"
-COMBO_OUTPUT_PATH="$SRC_DIR/combo.wav"
+VOLUME_OUTPUT_PATH="$SRC_DIR/volume.json"
 
 DOWNLOAD_SCRIPT="$SCRIPT_DIR/utils/_download.py"
 SEP_SCRIPT="$SCRIPT_DIR/corpus/seperate.py"
+VOLUME_SCRIPT="$SCRIPT_DIR/corpus/volume.py"
 
 BEAT_DETECTION_SCRIPT="$BEAT_DETECTION_DIR/beat_detection.py"
 BEAT_JSON_OUTPUT_NAME="beat_pred.json"
@@ -192,6 +193,10 @@ fi
 # --- Step 3: Run Main Music Generation Script (Uses Original/Default Environment) ---
 echo ""
 echo "--- Step 3: Running Main Music Generation Script ($MAIN_INFER_SCRIPT) ---"
+
+python $VOLUME_SCRIPT \
+  --input_wav $AUDIO_TARGET_PATH \
+  --output_json $VOLUME_OUTPUT_PATH
 
 if [ ! -f "$MAIN_INFER_SCRIPT" ]; then
     echo "Error: Main music generation script not found: $MAIN_INFER_SCRIPT" >&2

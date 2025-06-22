@@ -1,9 +1,10 @@
 import json
 import copy
+import math
 from pathlib import Path
 from dataclasses import dataclass
 from collections import defaultdict
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 
 import torch
 import numpy as np
@@ -233,6 +234,8 @@ class MidiTokenizer:
         with open(tempo_path, 'r') as f:
             self.tempo_data = json.load(f)
         self._create_measures()
+        self.velocity_map = None
+        self.time_resolution_for_map = 20
 
 
     def _detect_and_link_grace_notes(self, midi_data: list[dict]) -> list[dict]:
@@ -542,6 +545,77 @@ class MidiTokenizer:
         final_notes.extend(notes_to_add)
 
         return final_notes
+    
+
+    def _assign_velocity(self, notes: list[dict], volume_contour: Optional[np.ndarray] = None, gamma: int = 0.5) -> list[dict]:
+        """
+        Applies velocities to a list of decoded notes, using either a volume map or a rule-based fallback.
+        """
+        if not notes:
+            return []
+        
+        notes_in_measures = [[] for _ in self.global_measures]
+        for note in notes:
+            for i, measure in enumerate(self.global_measures):
+                if measure["start"] <= note["onset"] < measure["end"]:
+                    notes_in_measures[i].append(note)
+                    note['measure_idx'] = i
+                    break
+
+        for i, measure_notes in enumerate(notes_in_measures):
+            if not measure_notes:
+                continue
+
+            velocity_base = 75
+            if volume_contour is not None:
+                measure_info = self.global_measures[i]
+                start_step = int(measure_info['start'] * self.time_resolution_for_map)
+                end_step = int(measure_info['end'] * self.time_resolution_for_map)
+                
+                if end_step > start_step and end_step <= len(volume_contour):
+                    volume_slice = volume_contour[start_step:end_step]
+                    if volume_slice.size > 0:
+                        avg_loudness = np.mean(volume_slice)
+                        perceived_loudness = avg_loudness ** gamma
+                        velocity_base = 60 + perceived_loudness * 40
+                    else:
+                        velocity_base = 75 
+                else:
+                    velocity_base = 75
+            else:
+                note_count = len(measure_notes)
+                if note_count < 20: velocity_base = 70
+                elif note_count < 30: velocity_base = 80
+                else: velocity_base = 90
+            
+            notes_by_onset = defaultdict(list)
+            for note in measure_notes:
+                notes_by_onset[round(note['onset'], 4)].append(note)
+
+            for notes_at_onset in notes_by_onset.values():
+                sorted_notes = sorted(notes_at_onset, key=lambda x: x['pitch'], reverse=True)
+                for j, note_to_update in enumerate(sorted_notes):
+                    vel = max(velocity_base - 10, velocity_base - (j * 2))
+                    if note_to_update['pitch'] > 90: 
+                        vel -= 10
+                    note_to_update['velocity'] = int(max(0, min(127, vel)))
+
+        for note in notes:
+            if note.get("is_grace_note", False):
+                main_note = next((n for n in notes if abs(n['onset'] - note['offset']) < 1e-4 and n['pitch'] == note.get('main_note_pitch')), None)
+                if main_note and 'velocity' in main_note:
+                     grace_vel = main_note['velocity'] - 15
+                else:
+                     grace_vel = 65
+                
+                if note['pitch'] > 90:
+                    grace_vel -= 10
+
+                note['velocity'] = int(max(0, min(127, grace_vel)))
+                    
+        return notes
+    
+
     def _parse_chords(self, events: list[Event]) -> list[dict]:
         n, m = len(events), len(self.global_measures)
         if m != events.count(Event(type_="Bar", value="BOS")):
@@ -591,6 +665,7 @@ class MidiTokenizer:
 
         return chords
     
+
     def _split_hands(self, chords: list[dict]) -> tuple[list[dict], list[dict]]:
         prev_left, prev_right = (float("-inf"), []), (float("-inf"), []) # (onset, chord)
         r_chord_list, l_chord_list = [], []
@@ -816,88 +891,58 @@ class MidiTokenizer:
         # left_hand.append(meter.TimeSignature('4/4'))
         score.write('musicxml', fp=path_out)
 
-    def decode_to_notes(self, events: list[Event]) -> list[dict]:
-        """
-        Decodes events into notes, checks measure boundaries, and processes glissandos.
-        """
-        raw_decoded_notes = []
-        event_idx, measure_idx = 0, 0
-        num_events = len(events)
+    def decode_to_notes(self, events: list[Event], volume_map_path: Optional[str] = None) -> list[dict]:
+        volume_contour = None
+        if volume_map_path:
+            try:
+                with open(volume_map_path, 'r') as f:
+                    volume_contour = np.array(json.load(f))
+                print(f"Successfully loaded volume map from {volume_map_path}")
+            except Exception as e:
+                print(f"Warning: Could not load or parse volume map at {volume_map_path}. Error: {e}")
         
-        current_onset_sec = 0.0
+        raw_decoded_notes = []
+        event_idx, measure_idx, current_onset_sec, pending_grace_value = 0, 0, 0.0, None
         current_measure = None
-        pending_grace_value = None
-
-        while event_idx < num_events:
+        
+        while event_idx < len(events):
             event = events[event_idx]
-
             if event.type_ == "Bar" and event.value == "BOS":
-                if measure_idx < len(self.global_measures):
-                    current_measure = self.global_measures[measure_idx]
+                current_measure = self.global_measures[measure_idx] if measure_idx < len(self.global_measures) else None
                 measure_idx += 1; event_idx += 1; continue
-
-            if current_measure is None:
-                event_idx += 1; continue
-
-            measure_duration_sec = 0.0
-            if measure_idx < len(self.global_measures):
-                measure_duration_sec = self.global_measures[measure_idx]["start"] - current_measure["start"]
+            if not current_measure: event_idx += 1; continue
             
+            measure_duration_sec = self.global_measures[measure_idx]["start"] - current_measure["start"] if measure_idx < len(self.global_measures) else 0
             seconds_per_beat = (measure_duration_sec / current_measure.get("time_sig", 4)) if measure_duration_sec > 1e-6 else (60.0 / current_measure.get("bpm", 120.0))
-
+            
             if event.type_ == "Pos":
                 b_idx, b_rel_pos = self._parse_pos_idx(event.value)
                 current_onset_sec = current_measure["start"] + ((b_idx + b_rel_pos) * seconds_per_beat)
                 event_idx += 1; continue
-            
             if event.type_ == "Grace":
-                pending_grace_value = event.value
-                event_idx += 1; continue
-
+                pending_grace_value = event.value; event_idx += 1; continue
             if event.type_ == "Note":
-                # [MODIFIED] Boundary Check for main note
-                if not (current_measure["start"] <= current_onset_sec < current_measure["end"]) or current_onset_sec < 0:
-                    print(f"Warning: Skipping note at onset {current_onset_sec:.2f} as it's outside measure {measure_idx-1} boundaries [{current_measure['start']:.2f}, {current_measure['end']:.2f}).")
-                    event_idx += 2 if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration" else 1
-                    continue
-
                 main_note_pitch = event.value
-                if event_idx + 1 < num_events and events[event_idx + 1].type_ == "Duration":
+                if event_idx + 1 < len(events) and events[event_idx + 1].type_ == "Duration":
                     duration_token = events[event_idx + 1].value
                     duration_sec = duration_token * (seconds_per_beat / 4.0)
-                    main_note_offset = current_onset_sec + duration_sec
-
-                    raw_decoded_notes.append({
-                        "pitch": main_note_pitch, "onset": current_onset_sec,
-                        "offset": main_note_offset, "velocity": 80, "is_grace_note": False
-                    })
-
+                    if current_measure["start"] <= current_onset_sec < current_measure["end"]:
+                        raw_decoded_notes.append({"pitch": main_note_pitch, "onset": current_onset_sec, "offset": current_onset_sec + duration_sec, "velocity": 80, "is_grace_note": False, "rel_pos": event.value})
                     if pending_grace_value is not None:
                         grace_onset = current_onset_sec - 0.05
-                        # [MODIFIED] Boundary check for grace note
                         if current_measure["start"] <= grace_onset:
-                             raw_decoded_notes.append({
-                                "pitch": main_note_pitch + pending_grace_value,
-                                "onset": grace_onset, "offset": current_onset_sec,
-                                "velocity": 65, "is_grace_note": True,
-                                "main_note_pitch": main_note_pitch # Link to main note
-                            })
+                             raw_decoded_notes.append({"pitch": main_note_pitch + pending_grace_value, "onset": grace_onset, "offset": current_onset_sec, "velocity": 65, "is_grace_note": True, "main_note_pitch": main_note_pitch})
                         pending_grace_value = None
                     event_idx += 2
-                else:
-                    event_idx += 1
+                else: event_idx += 1
                 continue
-            
             event_idx += 1
         
-        # Sort before post-processing
-        raw_decoded_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
-
-        final_notes = self._process_glissandos(raw_decoded_notes)
+        processed_notes = self._process_glissandos(raw_decoded_notes)
+        final_notes_with_velocity = self._assign_velocity(processed_notes, volume_contour)
         
-        # Final sort
-        final_notes.sort(key=lambda x: (x["onset"], x["pitch"]))
-        return final_notes
+        final_notes_with_velocity.sort(key=lambda x: (x["onset"], x["pitch"]))
+        return final_notes_with_velocity
     
 
     def restore(self) -> list[dict]:
