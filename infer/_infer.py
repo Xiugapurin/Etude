@@ -24,7 +24,7 @@ DEFAULT_BEAT_PRED_FILE = ROOT / "infer" / "src" / "beat_pred.json"
 DEFAULT_EXTRACT_INPUT_AUDIO_NAME = "origin.wav"
 DEFAULT_EXTRACT_OUTPUT_JSON_NAME = "extract.json"
 DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "etude_e.mid"
-DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "12.pth"
+DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "9.pth"
 
 DEFAULT_GENERATION_VOCAB_PATH = ROOT / "dataset" / "tokenized" / "vocab.json"
 DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoint" / "decoder" / "90.pth"

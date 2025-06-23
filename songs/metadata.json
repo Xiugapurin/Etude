@@ -1,0 +1,702 @@
+[
+  {
+    "dir_name": "CPOP1",
+    "song_name": "周杰倫 - 夜曲",
+    "song_url": "https://youtu.be/6Q0Pd53mojY?si=0Yqb7ID5lRFayoxh",
+    "cover_url": "https://youtu.be/GjL93S7fF9Y?si=OYYFfZbYGcmNp-eo",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP2",
+    "song_name": "鄧紫棋 - 句號",
+    "song_url": "https://youtu.be/7XlqcS6B7WA?si=8G8uajB0B8sHjOmV",
+    "cover_url": "https://youtu.be/67eQGktcOx8?si=ZVAEkFEU0XhrMLzK",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP3",
+    "song_name": "動力火車-我很好騙",
+    "song_url": "https://youtu.be/efmtFFnZOGA?si=DT-aCxfPGgWESXR2",
+    "cover_url": "https://youtu.be/O6kua5ri9_Q?si=4oFhXR2qEBQvi0JN",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP4",
+    "song_name": "茄子蛋 - 閣愛妳一擺",
+    "song_url": "https://youtu.be/LRZVjXje1Hk?si=2T_CmwhfHtLtPF3S",
+    "cover_url": "https://youtu.be/Jpi921dKIgs?si=dhk3kkzucyrVcG6G",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP5",
+    "song_name": "韋禮安 - 如果可以",
+    "song_url": "https://youtu.be/8MG--WuNW1Y?si=HG7AMwKJi-j6znui",
+    "cover_url": "https://youtu.be/4wSAOeKBl3o?si=QK2MQRpeg1A7coiV",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "CPOP6",
+    "song_name": "陳奕迅 - 孤勇者",
+    "song_url": "https://youtu.be/zOUIkrqJsPk?si=3YroNyRW8vruZVmh",
+    "cover_url": "https://youtu.be/V0KcD36FV98?si=MtPlEDh6oQzibP62",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "CPOP7",
+    "song_name": "艾怡良 - 寂寞無害",
+    "song_url": "https://youtu.be/ybQ8mxBU91g?si=Fi6EeEv3KhTs43ru",
+    "cover_url": "https://youtu.be/43Cb7Luf5Sg?si=XcFumCcVE2H65E9U",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "CPOP8",
+    "song_name": "周興哲 - 以後別做朋友",
+    "song_url": "https://youtu.be/Ew4VvF0DPMc?si=x9YJT9LLm994g3-D",
+    "cover_url": "https://youtu.be/TWAPXxeD3_I?si=WVURU_FMkd2ceGZS",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "CPOP9",
+    "song_name": "林俊傑 - 不為誰而作的歌",
+    "song_url": "https://youtu.be/f5s2ujeJ-TA?si=vHGK4DLuUgUVsKRq",
+    "cover_url": "https://youtu.be/qsKRk3ErGWk?si=Xi_EjgSY4KSqkaQM",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP10",
+    "song_name": "五月天 - 後來的我們",
+    "song_url": "https://youtu.be/swPyPNQmhd4?si=eK9SY1COCmvmGaoX",
+    "cover_url": "https://youtu.be/Xz1aOnzPibg?si=i6ND4ngxeP_C6svv",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP11",
+    "song_name": "張惠妹 - 連名帶姓",
+    "song_url": "https://youtu.be/INOXA0DtsR4?si=dwOJZtc3Dg0iIe0S",
+    "cover_url": "https://youtu.be/1bWb0Ab2Z2M?si=uegYe_A63qsk4kl7",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "CPOP12",
+    "song_name": "盧廣仲 - 刻在我心底的名字",
+    "song_url": "https://youtu.be/2sX45Oyd1n0?si=9LU0mZSZ8SWuN2dX",
+    "cover_url": "https://youtu.be/SMBXFqjkVYs?si=xiwgeXSS5tAQf_vY",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "CPOP13",
+    "song_name": "家家 - 家家酒",
+    "song_url": "https://youtu.be/XETs8zyxwQ0?si=rOlG9Saiwxoa6upL",
+    "cover_url": "https://youtu.be/0I4gLd3gDPM?si=dmM8S6JW3kdR_ZjJ",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "CPOP14",
+    "song_name": "告五人 - 給你一瓶魔法藥水",
+    "song_url": "https://youtu.be/am2VNZwB_rc?si=2Gq_PRRPI9FjUucv",
+    "cover_url": "https://youtu.be/u0YWuDFdhnU?si=ApUyUOPaDDZ_f6eN",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP15",
+    "song_name": "艾薇Ivy - 失重前幸福",
+    "song_url": "https://youtu.be/dZlT8K_Woo0?si=s28dcAdz9wTifrcp",
+    "cover_url": "https://youtu.be/3FaokpLKSrQ?si=Ey1YPVqQbjRoBDdO",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "CPOP16",
+    "song_name": "蔡依林 - 玫瑰少年",
+    "song_url": "https://youtu.be/MzW4c5Le78o?si=Z9LY3I3HIZAZHeHc",
+    "cover_url": "https://youtu.be/VzP1x_tNDWg?si=xMrxANtUzJ0TT6-a",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP17",
+    "song_name": "楊丞琳 - 年輪說",
+    "song_url": "https://youtu.be/anurOHpo0aY?si=voki8Qt0xy0hXs6V",
+    "cover_url": "https://youtu.be/QIswvK2c8S8?si=fos2F0BSm2CCneLn",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP18",
+    "song_name": "玖壹壹 - 來個蹦蹦 ft. Ella 陳嘉樺",
+    "song_url": "https://youtu.be/pjo2JahovQ4?si=77t6-gNAmx8K7oVE",
+    "cover_url": "https://youtu.be/ZiEPb5TwoRQ?si=QeptTQ4lWg1hlOAN",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "CPOP19",
+    "song_name": "黃明志 - 東京盆踊り",
+    "song_url": "https://youtu.be/uV3hGm4f4Ic?si=vQU1AmUEU7Lp0Nsr",
+    "cover_url": "https://youtu.be/ouCjoU21nSI?si=ws8gSFdcdpw3ooha",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "CPOP20",
+    "song_name": "八三夭 - 想見你想見你想見你",
+    "song_url": "https://youtu.be/4iRupuNet3Q?si=eUaUqaymF0tXwoZh",
+    "cover_url": "https://youtu.be/2ugolzOV5AA?si=EY4gPUP75lXbUq2E",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "CPOP21",
+    "song_name": "A-Lin - 摯友",
+    "song_url": "https://youtu.be/vGqpGFH3vh8?si=dJuF5xBU69lwoLPn",
+    "cover_url": "https://youtu.be/pjK8DIJx-gg?si=S6v1UQcLHJAmDdEJ",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "CPOP22",
+    "song_name": "理想混蛋 - 離開的一路上",
+    "song_url": "https://youtu.be/3hLESh77fSg?si=_YmnGBl-KOkba41J",
+    "cover_url": "https://youtu.be/1-Celdf9h-U?si=dbQMAhcya71xs15k",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "CPOP23",
+    "song_name": "蘇打綠 - 你被寫在我的歌裡 feat. 陳嘉樺",
+    "song_url": "https://youtu.be/qotGA5KdW6c?si=TIdtfsEaSD8yAC5D",
+    "cover_url": "https://youtu.be/8FliVZBBTVs?si=qnwV0wFTHLRKkNAu",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP24",
+    "song_name": "艾辰 - 錯位時空",
+    "song_url": "https://youtu.be/mXf3Klcn-sM?si=EHfDcpvA6ZibsR4V",
+    "cover_url": "https://youtu.be/e8cleQBpVmc?si=thSKDJ66wdhbMyTS",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "CPOP25",
+    "song_name": "利比 - 跳楼机",
+    "song_url": "https://youtu.be/HegSBovl24I?si=zY3mVSmXACBOXnlu",
+    "cover_url": "https://youtu.be/2-85535fRZU?si=iydvTS07kuRzCbJE",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP1",
+    "song_name": "Official髭男dism - 50%",
+    "song_url": "https://youtu.be/Vv2n31gL85I?si=WH-WoymustH9eYlh",
+    "cover_url": "https://youtu.be/7zUpdgonGMo?si=o1TRq0brtQvAj-ma",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "JPOP2",
+    "song_name": "米津玄師 Kenshi Yonezu - Plazma",
+    "song_url": "https://youtu.be/fp3F6TqBsAU?si=_3VLOa2sjaQxCInN",
+    "cover_url": "https://youtu.be/Ysy-vxXagt0?si=R9ibuzGVdLfs5pJd",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP3",
+    "song_name": "Fujii Kaze - masshiro (pure white)",
+    "song_url": "https://youtu.be/XwgL4C2WaU8?si=54QdrJEdxeDafmiO",
+    "cover_url": "https://youtu.be/aTBoO9u9_nk?si=WxVegQ0bdRJXzS-P",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP4",
+    "song_name": "ユイカ - おくすり",
+    "song_url": "https://youtu.be/-qSqMSsJ4AE?si=LLIMqVhf3dYXlpas",
+    "cover_url": "https://youtu.be/0sAKB6tqWTM?si=pjVTLxbQ7_Zxhh_D",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP5",
+    "song_name": "星野源 - Eureka",
+    "song_url": "https://youtu.be/CJS-dnAiiFE?si=V8NBrMWkgoQ3rSc_",
+    "cover_url": "https://youtu.be/A_A9SpaDbZg?si=Ty4N9NO4av2Xd8lJ",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "JPOP6",
+    "song_name": "LiSA feat. Felix of Stray Kids - ReawakeR",
+    "song_url": "https://youtu.be/Aw192XYfEeM?si=C9UVfm2sbywaCd1Z",
+    "cover_url": "https://youtu.be/ZL_MYl2hveM?si=wx_jX9KxWOe_k2KD",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP7",
+    "song_name": "DECO*27 - モニタリング feat. 初音ミク",
+    "song_url": "https://youtu.be/kbNdx0yqbZE?si=iv-gL5WK_Hh1hSn-",
+    "cover_url": "https://youtu.be/HkBSBNXfGW8?si=T-GGNbZAxWSWRR6e",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "JPOP8",
+    "song_name": "tuki. - 純恋愛のインゴット",
+    "song_url": "https://youtu.be/goCvO7uJhu8?si=Y1_9bNZg5EB4gyuJ",
+    "cover_url": "https://youtu.be/bJ17lpVpOXc?si=L-jYMIfTUzkBdrgw",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP9",
+    "song_name": "King Gnu - TWILIGHT!!!",
+    "song_url": "https://youtu.be/qIcIpSyHcyM?si=yuQpXb-Xl2QhaItl",
+    "cover_url": "https://youtu.be/Ihq6k3pr-D0?si=85MpwNrrTsZMRFYS",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP10",
+    "song_name": "YOASOBI - New me",
+    "song_url": "https://youtu.be/HRlW6yZo6Kc?si=FydXdPjyxB2qUhcx",
+    "cover_url": "https://youtu.be/MVShEfElKXg?si=pqABi7dYFTwm3VpA",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP11",
+    "song_name": "緑黄色社会 - 馬鹿の一つ覚え",
+    "song_url": "https://youtu.be/oowSgjv49vk?si=AYIgupKj6AYFImbm",
+    "cover_url": "https://youtu.be/GxK_GuvboEo?si=i_QEuP0wK0I2uuO7",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "JPOP12",
+    "song_name": "ずっと真夜中でいいのに。 - クリームで会いにいけますか",
+    "song_url": "https://youtu.be/JQ2913bVo30?si=J0s67SVqoXY1BzJt",
+    "cover_url": "https://youtu.be/Q47erMMW6bQ?si=xzG7aSwOSylXrwcT",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP13",
+    "song_name": "ヨルシカ - 火星人",
+    "song_url": "https://youtu.be/OLRbIc8KZ_8?si=ITtWV9uOmacyi1AX",
+    "cover_url": "https://youtu.be/x--QNb44gnE?si=9CrFAL94xjT0a8hd",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "JPOP14",
+    "song_name": "back number - ブルーアンバー",
+    "song_url": "https://youtu.be/ru6i9lo4zBE?si=1Zg04vMhw-zGKPyQ",
+    "cover_url": "https://youtu.be/5H1ik60ofNE?si=rTsjJVd9ZAgpj73u",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP15",
+    "song_name": "Ado - エルフ",
+    "song_url": "https://youtu.be/SbxR25brgoE?si=RFcjkjt-8MtwsXtV",
+    "cover_url": "https://youtu.be/4DDxVQVtWBQ?si=wk11aRTQvdZ49pOP",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "JPOP16",
+    "song_name": "Mrs. GREEN APPLE - クスシキ",
+    "song_url": "https://youtu.be/RCaTLn4qoz4?si=LDQaf_9VSRWdsXiQ",
+    "cover_url": "https://youtu.be/ksTTPah9sE8?si=j9mSUnwXSqkvbb0C",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "JPOP17",
+    "song_name": "Vaundy - 僕にはどうしてわかるんだろう",
+    "song_url": "https://youtu.be/x4aWXNWPrtY?si=9PJ1WkkwYYT1H8EI",
+    "cover_url": "https://youtu.be/cOZyg2NveCo?si=FkeM7TvJchuHnCm0",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "JPOP18",
+    "song_name": "Eve - さよならエンドロール",
+    "song_url": "https://youtu.be/VOChndxKi6U?si=9ANwRTBA-kSqZvu2",
+    "cover_url": "https://youtu.be/-hOA_P2MSow?si=Y8UyEIE4aJBX3g62",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "JPOP19",
+    "song_name": "あいみょん - スケッチ",
+    "song_url": "https://youtu.be/IMgmh75uzT0?si=7ZIKpQCPSw6zhZo9",
+    "cover_url": "https://youtu.be/1gwXAgW2w_U?si=Wi4SlDF0CGYhnUWk",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "JPOP20",
+    "song_name": "Kanaria - BRAIN",
+    "song_url": "https://youtu.be/h4HkXR3NSI4?si=PzAbzYbgj7yVuc1c",
+    "cover_url": "https://youtu.be/lFN3TUBn64Y?si=Uj04zHihE3oDQLcS",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "JPOP21",
+    "song_name": "milet - I Still",
+    "song_url": "https://youtu.be/Y8_5elKAKl0?si=okk22aSuXfWdKs4g",
+    "cover_url": "https://youtu.be/95uN5Wbpnaw?si=0JEIBIENKen3U3ym",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "JPOP22",
+    "song_name": "Aimer - SCOPE",
+    "song_url": "https://youtu.be/mBqsmE3DG1Q?si=Cqe0wNIv_3ZeOMgq",
+    "cover_url": "https://youtu.be/LAUvK_GYdhQ?si=pbztaqfDqMCK4L77",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "JPOP23",
+    "song_name": "ALI - CASANOVA POSSE",
+    "song_url": "https://youtu.be/sPxXiXucYcM?si=BRbkbVXquKdffZhy",
+    "cover_url": "https://youtu.be/tqUz81QJ7tU?si=XeaN_UPfhQKyJ2mE",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "JPOP24",
+    "song_name": "AiScReam - 愛♡スクリ～ム！",
+    "song_url": "https://youtu.be/3yaab2_EEHM?si=rKQuCrvs3CI_yaO1",
+    "cover_url": "https://youtu.be/Pd9nG-NJKnI?si=gNuqvvgdi7cWvBHP",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "JPOP25",
+    "song_name": "結束バンド - ドッペルゲンガー",
+    "song_url": "https://youtu.be/UEwjYcGe0WU?si=V0QzHDY7JjULUpdw",
+    "cover_url": "https://youtu.be/bBvT5P67pVc?si=X5zdsnUB2mwOh-50",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP1",
+    "song_name": "진 (Jin) - Don't Say You Love Me",
+    "song_url": "https://youtu.be/o7BcyAd6rqg?si=LS4XTcPmGB9H-O1g",
+    "cover_url": "https://youtu.be/6iHxIIshQbQ?si=DFnXTgjsopQp7w4f",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP2",
+    "song_name": "i-dle (아이들) - Good Thing",
+    "song_url": "https://youtu.be/hAONx6nuEgI?si=EsqFzY2cfa-_gkSt",
+    "cover_url": "https://youtu.be/Ns1Kgdv4Q0k?si=ZiA3ZksDYkFJVDWQ",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP3",
+    "song_name": "SEVENTEEN (세븐틴) - THUNDER",
+    "song_url": "https://youtu.be/pS57UX6s-xw?si=_WbWXjTEZmYaMsma",
+    "cover_url": "https://youtu.be/xtqKprXY0xg?si=jox-2NTPrTHQE-aF",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP4",
+    "song_name": "UNIS(유니스) - SWICY",
+    "song_url": "https://youtu.be/R-6qq-o16uA?si=sNL2bJINNrGoCbaO",
+    "cover_url": "https://youtu.be/3cz_Lx-TzEI?si=0qVEKO3MPNXKDnFV",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "KPOP5",
+    "song_name": "MEOVV(미야오) - HANDS UP",
+    "song_url": "https://youtu.be/sL0pCS6K9bc?si=aNEX7y9CsvAE9DBH",
+    "cover_url": "https://youtu.be/N41GKc2ZFxg?si=qbV1LytQpEhRUE-p",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP6",
+    "song_name": "ZEROBASEONE (제로베이스원) - BLUE",
+    "song_url": "https://youtu.be/2hwiRN8t8Ok?si=BTnLZftPriukxxyr",
+    "cover_url": "https://youtu.be/aRFbLRX1Idk?si=5uMyzyO7c_Ght7_Y",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "KPOP7",
+    "song_name": "BABYMONSTER - Really Like You",
+    "song_url": "https://youtu.be/XShaIZs7J7M?si=cQ_gGZ28j0L8QdHi",
+    "cover_url": "https://youtu.be/V50NU0lSG6o?si=j8FrX9wzvOeE_HvD",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "KPOP8",
+    "song_name": "IVE 아이브 - REBEL HEART",
+    "song_url": "https://youtu.be/g36q0ZLvygQ?si=t3tDnDyfuJXsBtUY",
+    "cover_url": "https://youtu.be/79qOY0wFWTw?si=4kZBsxSB7ta8qPUm",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "KPOP9",
+    "song_name": "지민 (Jimin) - Who",
+    "song_url": "https://youtu.be/Av9DvtlJ9_M?si=5rhVkvk2u5KMSUh6",
+    "cover_url": "https://youtu.be/yB-DvGHK_4w?si=NNj1hG9RAjX1y_Ek",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP10",
+    "song_name": "j-hope - MONA LISA",
+    "song_url": "https://youtu.be/ECqGCH1TfLY?si=uqxL9_PDY1GI7h9w",
+    "cover_url": "https://youtu.be/ePRnIidc_yU?si=KjS1apXVE0Mu3spy",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP11",
+    "song_name": "QWER - 눈물참기",
+    "song_url": "https://youtu.be/pifz9JH1Re8?si=xWcopy1H8oXFdf4v",
+    "cover_url": "https://youtu.be/oKcH6H8FnD8?si=K-exYNBzG4rwFPP5",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "KPOP12",
+    "song_name": "NMIXX(엔믹스) - KNOW ABOUT ME",
+    "song_url": "https://youtu.be/aFrQIJ5cbRc?si=PUzMg_J0nLFimEin",
+    "cover_url": "https://youtu.be/CCQzbBkLZJk?si=7ohsnNPutGws9ub0",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP13",
+    "song_name": "LE SSERAFIM (르세라핌) - HOT",
+    "song_url": "https://youtu.be/r9AEGPB6qIU?si=kr4RRjt5FCub5KeF",
+    "cover_url": "https://youtu.be/s7THOrRiUNA?si=PDMFGoLZCKiIKSBz",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP14",
+    "song_name": "RIIZE 라이즈 - Boom Boom Bass",
+    "song_url": "https://youtu.be/78lNnCitcBM?si=-xxT5dP1Wshp7t39",
+    "cover_url": "https://youtu.be/oDj_VE6QgwA?si=uRejyl3z4HNLjnPu",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "KPOP15",
+    "song_name": "(여자)아이들((G)I-DLE) - 클락션 (Klaxon)",
+    "song_url": "https://youtu.be/kd5LJ4r-vEY?si=jlehYusr9Q9Gbcaj",
+    "cover_url": "https://youtu.be/isUb_85hJzY?si=LWXFw4VFAox-K_KP",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP16",
+    "song_name": "KATSEYE (캣츠아이) - Touch",
+    "song_url": "https://youtu.be/l9CZykYZkOQ?si=J4NtkTdo-bREdipl",
+    "cover_url": "https://youtu.be/F4fGMxmbeZQ?si=vBsxfnNaHsMsHBMU",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP17",
+    "song_name": "aespa 에스파 - Whiplash",
+    "song_url": "https://youtu.be/jWQx2f-CErU?si=84pytoRz0XX-fvPa",
+    "cover_url": "https://youtu.be/rge2Tt3dX0c?si=Rh9F9kdr8lNzpI8n",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "KPOP18",
+    "song_name": "TWICE - Strategy (feat. Megan Thee Stallion)",
+    "song_url": "https://youtu.be/Sz_wWzgh-vQ?si=4M7m8ZBUdk5wXMu3",
+    "cover_url": "https://youtu.be/48AH_CnISsw?si=B2xgBTYsO1Ko24ch",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "KPOP19",
+    "song_name": "LISA - MOONLIT FLOOR",
+    "song_url": "https://youtu.be/pxGM_TOgHuM?si=AvydEQJAaVwA9VgE",
+    "cover_url": "https://youtu.be/CDthkVwgouM?si=q-MH6UO0KqOrZOap",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "KPOP20",
+    "song_name": "ILLIT (아일릿) ‘Cherish (My Love)",
+    "song_url": "https://youtu.be/tbDGl7jEazA?si=ldelsZdRjRsc_kh1",
+    "cover_url": "https://youtu.be/rthSzm8LUPE?si=ZgIVOZmxLO8_CcO7",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP21",
+    "song_name": "NewJeans (뉴진스) ‘Supernatural",
+    "song_url": "https://youtu.be/ZncbtRo7RXs?si=iwpV2VMnkpDrqHCN",
+    "cover_url": "https://youtu.be/0CPAMIwr3Jk?si=ob2p8KP-oZ9w_TqU",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "KPOP22",
+    "song_name": "ATEEZ(에이티즈) - WORK",
+    "song_url": "https://youtu.be/VGnOpZhsPk4?si=PMQKLMDWq-5R7Qju",
+    "cover_url": "https://youtu.be/7sKITIyyv5A?si=z5hAaWG7fz7xHXCT",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP23",
+    "song_name": "정국 (Jung Kook) - Seven (feat. Latto)",
+    "song_url": "https://youtu.be/QU9c0053UAU?si=VOhHy7Xrcrv5aMmS",
+    "cover_url": "https://youtu.be/gaP80bgQaaM?si=jVr5njZ-GzguNdMp",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "KPOP24",
+    "song_name": "YEJI - Air",
+    "song_url": "https://youtu.be/TamDOXponnM?si=NG14TXVycMjWf6Ut",
+    "cover_url": "https://youtu.be/eNk-r892QD4?si=JQF2bjWLKq44qtOG",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "KPOP25",
+    "song_name": "NAYEON - ABCD",
+    "song_url": "https://youtu.be/oUZttxRcPZw?si=HFC3nKbwA9gqOP2g",
+    "cover_url": "https://youtu.be/rtNpC_X_LeU?si=kajU4VlILWQlrizh",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN1",
+    "song_name": "Lady Gaga, Bruno Mars - Die With A Smile",
+    "song_url": "https://youtu.be/kPa7bsKwL-c?si=MkJuxhdqNfbXLCg2",
+    "cover_url": "https://youtu.be/iPnhp9m1uJM?si=8g8N32WP_laDFhH2",
+    "style": [2, 2, 1]
+  },
+  {
+    "dir_name": "WESTERN2",
+    "song_name": "Benson Boone - Beautiful Things",
+    "song_url": "https://youtu.be/Oa_RSwwpPaA?si=0EqBLMEbVPpAmUrN",
+    "cover_url": "https://youtu.be/XT4ktgVlbbw?si=9XXsm05HfG8VMWQE",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "WESTERN3",
+    "song_name": "Taylor Swift - Fortnight",
+    "song_url": "https://youtu.be/q3zqJs7JUCQ?si=dLcF_Hbx6af1RIbB",
+    "cover_url": "https://youtu.be/anmCfL4JRVY?si=oAB7vW18I9omBumQ",
+    "style": [1, 2, 1]
+  },
+  {
+    "dir_name": "WESTERN4",
+    "song_name": "Billie Eilish - BIRDS OF A FEATHER",
+    "song_url": "https://youtu.be/V9PVRfjEBTI?si=Xulg4qentDa6C6iR",
+    "cover_url": "https://youtu.be/Pmw0Bgw72OA?si=BDFW3a3omYvHM_SC",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN5",
+    "song_name": "Sabrina Carpenter - Espresso",
+    "song_url": "https://youtu.be/eVli-tstM5E?si=yXf0rW3nwgd6qtwG",
+    "cover_url": "https://youtu.be/I2gMUHWAq3g?si=9kS2how1ehlOrqDT",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN6",
+    "song_name": "Shaboozey - A Bar Song",
+    "song_url": "https://youtu.be/t7bQwwqW-Hc?si=ewrYJqni8Dve9kmV",
+    "cover_url": "https://youtu.be/JwOhTUKm78w?si=akkHci9Mh6-gZiw8",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN7",
+    "song_name": "Eminem - Houdini",
+    "song_url": "https://youtu.be/22tVWwmTie8?si=Lp96dZq8E8ZY2kuX",
+    "cover_url": "https://youtu.be/-Oqk9mJexBI?si=G8cC3gn70zglWERI",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN8",
+    "song_name": "ROSÉ & Bruno Mars - APT.",
+    "song_url": "https://youtu.be/ekr2nIex040?si=qWScUxYuRpL4hsgU",
+    "cover_url": "https://youtu.be/2HfDMiPpnh0?si=1Lv89aSrAPHhjTTq",
+    "style": [1, 2, 2]
+  },
+  {
+    "dir_name": "WESTERN9",
+    "song_name": "Miley Cyrus - Flowers",
+    "song_url": "https://youtu.be/G7KNmW9a75Y?si=MQwTjNnkyeYiwmqh",
+    "cover_url": "https://youtu.be/StCOD6kCQGE?si=Lw0yppyzEIqLYtW0",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN10",
+    "song_name": "Ariana Grande - we can't be friends",
+    "song_url": "https://youtu.be/UdRAXWNvjzE?si=yvEjxBAKo2XUbYBO",
+    "cover_url": "https://youtu.be/B-10AdbmdLs?si=CsSoGUlzBmvslMxY",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN11",
+    "song_name": "Dua Lipa - Houdini",
+    "song_url": "https://youtu.be/suAR1PYFNYA?si=jWsKuQZHxWk8wM9-",
+    "cover_url": "https://youtu.be/III7PhTsBt0?si=g0ZAI6EjCvoM1oJO",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN12",
+    "song_name": "Tate McRae - greedy",
+    "song_url": "https://youtu.be/To4SWGZkEPk?si=JjCfP9PaNhwFpX2h",
+    "cover_url": "https://youtu.be/VxWxGiKCanc?si=TfKaHazNObb6a2KV",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN13",
+    "song_name": "Oliver Anthony - Rich Men North Of Richmond",
+    "song_url": "https://youtu.be/sqSA-SY5Hro?si=V1mhv9c2cwISDTNf",
+    "cover_url": "https://youtu.be/5e6gFLkzlkk?si=JGIheg74j-WgoHlg",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN14",
+    "song_name": "Hozier - Too Sweet",
+    "song_url": "https://youtu.be/aezstCBHOPQ?si=gpHdtEaRuC6WUTRK",
+    "cover_url": "https://youtu.be/FMfj2C-N_40?si=xBrWIKVMcnAiQSdr",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN15",
+    "song_name": "The Weeknd, Ariana Grande - Die For You",
+    "song_url": "https://youtu.be/YQ-qToZUybM?si=HjNp93AzoNTA8wPg",
+    "cover_url": "https://youtu.be/tX3aib2s9Cs?si=JM_asQuSX1BaflDD",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN16",
+    "song_name": "Teddy Swims - The Door",
+    "song_url": "https://youtu.be/VSXT4a2kRHA?si=C8lPVMVyhT8oWZCV",
+    "cover_url": "https://youtu.be/DBWCOJDs2D4?si=KK4FkXJtSfWtSCzb",
+    "style": [2, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN17",
+    "song_name": "SZA - Snooze",
+    "song_url": "https://youtu.be/Sv5yCzPCkv8?si=r06GJNcTJoFi5X-x",
+    "cover_url": "https://youtu.be/JNP17M7FJB4?si=85Y-cquSLFaCcqgL",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN18",
+    "song_name": "Toosii - Favorite Song",
+    "song_url": "https://youtu.be/4D89Qr5vH6U?si=N8bI8tBjxVblm5TD",
+    "cover_url": "https://youtu.be/Z_2FGTuMEis?si=-CWG19m37RM2muio",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN19",
+    "song_name": "Sabrina Carpenter - Please Please Please",
+    "song_url": "https://youtu.be/Yl_thbk40A0?si=8K2ikshUnOxd5R-C",
+    "cover_url": "https://youtu.be/vbMUDXqW4ZA?si=JkgwEZamUDW0j1qD",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN20",
+    "song_name": "Tyla - Water",
+    "song_url": "https://youtu.be/XoiOOiuH8iI?si=kt_xGaJJmwLozVB1",
+    "cover_url": "https://youtu.be/ET4XhQqpU98?si=lok6FEtNSblp-Ds2",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN21",
+    "song_name": "Morgan Wallen - Last Night",
+    "song_url": "https://youtu.be/bUjPPBxbQrQ?si=UtUhHugIGiCyGZy6",
+    "cover_url": "https://youtu.be/XyyCV-TDsmY?si=Uz6yxFrmMSoUYAqg",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN22",
+    "song_name": "Jack Harlow - Lovin On Me",
+    "song_url": "https://youtu.be/Iq8h3GEe22o?si=cfZ0FC3XGIoyOjSi",
+    "cover_url": "https://youtu.be/Zw1BG52367g?si=9yqenjuuuDvmpjuz",
+    "style": [2, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN23",
+    "song_name": "Doja Cat - Paint The Town Red",
+    "song_url": "https://youtu.be/m4_9TFeMfJE?si=pYRdapTIKWu4im4W",
+    "cover_url": "https://youtu.be/XXaqPG6w38k?si=Q7KP8sE2IsZaI47P",
+    "style": [1, 1, 1]
+  },
+  {
+    "dir_name": "WESTERN24",
+    "song_name": "Rema, Selena Gomez - Calm Down",
+    "song_url": "https://youtu.be/WcIcVapfqXw?si=K5hwLr9y6E4awJSc",
+    "cover_url": "https://youtu.be/fHLbrJC77NQ?si=ISEMRnVkwjrvVz-7",
+    "style": [1, 1, 2]
+  },
+  {
+    "dir_name": "WESTERN25",
+    "song_name": "Alvaro Soler - Sofia",
+    "song_url": "https://youtu.be/qaZ0oAh4evU?si=DzJAneAZw_2l5UEo",
+    "cover_url": "https://youtu.be/bSUBuwYGudg?si=08vYYldoa3_3Qo9g",
+    "style": []
+  }
+]
