@@ -65,7 +65,7 @@
     <!-- Main Content: Song List -->
     <main id="song-list-container" class="container mx-auto p-4 md:p-8">
       <div id="loading-indicator" class="text-center py-20">
-        <p class="text-gray-500 text-lg">正在加載音樂庫與 metadata...</p>
+        <p class="text-gray-500 text-lg">Loading demo songs...</p>
       </div>
       <!-- Category content will be injected here -->
     </main>
@@ -74,7 +74,7 @@
     <div id="bottom-player" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl p-4 z-30 transform translate-y-full">
       <div class="container mx-auto">
         <div class="flex items-center mb-3">
-          <h3 id="now-playing-title" class="text-lg font-semibold text-gray-800 flex-grow truncate">正在播放...</h3>
+          <h3 id="now-playing-title" class="text-lg font-semibold text-gray-800 flex-grow truncate">playing...</h3>
           <button id="close-player-btn" class="text-gray-500 hover:text-gray-800 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -86,7 +86,7 @@
             <midi-player id="player" sound-font></midi-player>
           </div>
           <div class="md:col-span-2">
-            <midi-visualizer type="piano-roll" id="visualizer"></midi-visualizer>
+            <midi-visualizer type="waterfall" id="visualizer"></midi-visualizer>
           </div>
         </div>
       </div>
@@ -96,7 +96,6 @@
       document.addEventListener("DOMContentLoaded", async function () {
         // --- CONFIGURATION ---
         const config = {
-          // New category order
           songCategories: {
             WESTERN: { name: "Western Pop", count: 25 },
             JPOP: { name: "J-POP", count: 25 },
@@ -165,8 +164,8 @@
             const categoryKeys = Object.keys(config.songCategories);
             categoryKeys.forEach((key, index) => {
               const category = config.songCategories[key];
-              ui.createNavLink(key, category.name, index === 0); // Activate the first tab
-              ui.createCategorySection(key, category, metadataMap, index === 0); // Show the first category's content
+              ui.createNavLink(key, category.name, index === 0);
+              ui.createCategorySection(key, category, metadataMap, index === 0);
             });
           },
           createNavLink: (key, name, isActive) => {
@@ -202,11 +201,13 @@
             card.appendChild(cardTitle);
 
             const cardGrid = document.createElement("div");
-            cardGrid.className = "grid grid-cols-1 md:grid-cols-2 gap-6 items-center";
+            // MODIFIED: Changed items-center to items-start for better alignment
+            cardGrid.className = "grid grid-cols-1 md:grid-cols-2 gap-6 items-start";
 
             // Left side: Track list
-            const trackList = document.createElement("ul");
-            trackList.className = "space-y-2";
+            // MODIFIED: Changed from <ul> to a div with grid layout
+            const trackList = document.createElement("div");
+            trackList.className = "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2";
             config.midiFiles.forEach((midi) => {
               const trackPath = `./songs/${songId}/${midi.file}`;
               const trackName = `${songMeta.song_name} - ${midi.name}`;
@@ -218,7 +219,8 @@
             const embedContainer = document.createElement("div");
             const embedUrl = utils.getYoutubeEmbedUrl(songMeta.song_url);
             if (embedUrl) {
-              embedContainer.className = "aspect-w-16 aspect-h-9";
+              // MODIFIED: Replaced deprecated aspect-w-16 aspect-h-9 with modern `aspect-video`
+              embedContainer.className = "w-full aspect-video";
               const iframe = document.createElement("iframe");
               iframe.src = embedUrl;
               iframe.className = "w-full h-full rounded-lg";
@@ -226,7 +228,7 @@
               iframe.frameBorder = "0";
               iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
               iframe.allowFullscreen = true;
-              iframe.loading = "lazy"; // Lazy load iframes for performance
+              iframe.loading = "lazy";
               embedContainer.appendChild(iframe);
             }
             cardGrid.appendChild(embedContainer);
@@ -235,8 +237,9 @@
             return card;
           },
           createTrackListItem: (midi, trackPath, trackName, songMeta) => {
-            const listItem = document.createElement("li");
-            listItem.className = "flex justify-between items-center bg-gray-50 pl-3 pr-2 py-1 rounded-lg";
+            // MODIFIED: This function now returns a div instead of an li for the new grid layout
+            const itemWrapper = document.createElement("div");
+            itemWrapper.className = "flex justify-between items-center bg-gray-50 pl-3 pr-2 py-1 rounded-lg";
 
             let trackLabel;
             if (midi.id === "human" && songMeta.cover_url) {
@@ -252,7 +255,6 @@
               trackLabel.textContent = midi.name;
             }
 
-            // New circular play button with SVG icon
             const playButton = document.createElement("button");
             playButton.className =
               "play-btn h-8 w-8 flex-shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500";
@@ -265,9 +267,9 @@
             labelContainer.className = "flex-grow truncate mr-2";
             labelContainer.appendChild(trackLabel);
 
-            listItem.appendChild(labelContainer);
-            listItem.appendChild(playButton);
-            return listItem;
+            itemWrapper.appendChild(labelContainer);
+            itemWrapper.appendChild(playButton);
+            return itemWrapper;
           },
         };
 
@@ -302,11 +304,9 @@
 
             const targetCategory = link.dataset.target;
 
-            // Update nav links
             dom.navContainer.querySelectorAll(".nav-link").forEach((l) => l.classList.remove("active"));
             link.classList.add("active");
 
-            // Update content visibility
             dom.songListContainer.querySelectorAll(".category-content").forEach((c) => c.classList.remove("active"));
             document.getElementById(`category-${targetCategory}`).classList.add("active");
           },
