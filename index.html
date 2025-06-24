@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MIDI 歌曲展示</title>
+    <!-- 引入 Tailwind CSS 以進行樣式設計 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 html-midi-player 及其相依套件 -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
+    <!-- 引入 Google Fonts 以獲得更美觀的字體 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      /* 自定義樣式 */
+      body {
+        font-family: "Inter", sans-serif;
+        scroll-behavior: smooth;
+      }
+      /* 美化 midi-player 的控制面板 */
+      midi-player::part(control-panel) {
+        background: #f9fafb; /* light gray background */
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 8px;
+      }
+      midi-player::part(play-button) {
+        color: #4f46e5; /* indigo color */
+      }
+      midi-visualizer {
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800">
+    <!-- 主容器 -->
+    <div class="container mx-auto p-4 md:p-8">
+      <!-- 頁面標題 -->
+      <header class="text-center mb-8">
+        <h1 class="text-4xl md:text-5xl font-bold text-gray-900">MIDI 歌曲庫</h1>
+        <p class="mt-2 text-lg text-gray-600">展示 100 首歌曲，每首由 6 種不同模型生成</p>
+      </header>
+
+      <!-- 共享的視覺化工具 (固定在頂部) -->
+      <div class="sticky top-4 z-10 bg-white/80 backdrop-blur-sm p-4 rounded-xl shadow-lg mb-8">
+        <h2 class="text-xl font-semibold mb-3 text-center text-gray-700">鋼琴捲簾視覺化</h2>
+        <midi-visualizer type="piano-roll" id="shared-visualizer" class="w-full h-48"></midi-visualizer>
+      </div>
+
+      <!-- 歌曲列表容器 -->
+      <main id="song-list" class="space-y-6">
+        <!-- 歌曲卡片將由 JavaScript 動態生成於此 -->
+        <div class="text-center py-12">
+          <p class="text-gray-500">正在加載歌曲...</p>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // 等待 DOM 完全加載後執行
+      document.addEventListener("DOMContentLoaded", function () {
+        const songListContainer = document.getElementById("song-list");
+        const totalSongs = 100; // 歌曲總數
+        const midiFiles = [
+          { name: "Human", file: "human.mid", description: "原始人類演奏版本" },
+          { name: "Etude (d)", file: "etude_d.mid", description: "模型 D 生成" },
+          { name: "Etude (e)", file: "etude_e.mid", description: "模型 E 生成" },
+          { name: "Music2Midi", file: "music2midi.mid", description: "Music2Midi 模型生成" },
+          { name: "PicoGen", file: "picogen.mid", description: "PicoGen 模型生成" },
+          { name: "AMTA-PC", file: "amtapc.mid", description: "AMTA-PC 模型生成" },
+        ];
+
+        // 清空 "正在加載" 的提示
+        songListContainer.innerHTML = "";
+
+        // 輔助函式：將數字補零至指定長度 (例如 1 -> 001)
+        function pad(num, size) {
+          let s = num + "";
+          while (s.length < size) s = "0" + s;
+          return s;
+        }
+
+        // 循環生成每一首歌曲的卡片
+        for (let i = 1; i <= totalSongs; i++) {
+          const songNumber = pad(i, 3);
+          const songDir = `songs/song_${songNumber}`;
+
+          // 創建歌曲卡片的容器
+          const songCard = document.createElement("div");
+          songCard.className = "bg-white p-5 md:p-6 rounded-xl shadow-md transition hover:shadow-lg";
+
+          // 歌曲標題
+          const songTitle = document.createElement("h3");
+          songTitle.className = "text-2xl font-bold mb-4 text-indigo-700";
+          songTitle.textContent = `歌曲 #${songNumber}`;
+          songCard.appendChild(songTitle);
+
+          // 創建網格佈局來放置多個播放器
+          const gridContainer = document.createElement("div");
+          gridContainer.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4";
+
+          // 為每個 MIDI 文件創建一個播放器
+          midiFiles.forEach((midi) => {
+            const playerWrapper = document.createElement("div");
+            playerWrapper.className = "border border-gray-200 rounded-lg p-4 bg-gray-50";
+
+            const midiName = document.createElement("p");
+            midiName.className = "font-semibold text-gray-800";
+            midiName.textContent = midi.name;
+            playerWrapper.appendChild(midiName);
+
+            const midiDescription = document.createElement("p");
+            midiDescription.className = "text-sm text-gray-500 mb-2";
+            midiDescription.textContent = midi.description;
+            playerWrapper.appendChild(midiDescription);
+
+            // 創建 midi-player 元素
+            const midiPlayer = document.createElement("midi-player");
+            midiPlayer.setAttribute("src", `${songDir}/${midi.file}`);
+            midiPlayer.setAttribute("sound-font", ""); // 使用預設的 SoundFont
+            midiPlayer.setAttribute("visualizer", "#shared-visualizer"); // 綁定到共享的視覺化工具
+
+            playerWrapper.appendChild(midiPlayer);
+            gridContainer.appendChild(playerWrapper);
+          });
+
+          songCard.appendChild(gridContainer);
+          songListContainer.appendChild(songCard);
+        }
+      });
+    </script>
+  </body>
+</html>
