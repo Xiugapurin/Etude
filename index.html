@@ -239,7 +239,7 @@
           createTrackListItem: (midi, trackPath, trackName, songMeta) => {
             // MODIFIED: This function now returns a div instead of an li for the new grid layout
             const itemWrapper = document.createElement("div");
-            itemWrapper.className = "flex justify-between items-center bg-gray-50 pl-3 pr-2 py-1 rounded-lg";
+            itemWrapper.className = "flex justify-between items-center bg-gray-50 px-4 py-3 rounded-lg";
 
             let trackLabel;
             if (midi.id === "human" && songMeta.cover_url) {
