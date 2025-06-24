@@ -7,54 +7,67 @@ import json
 import os
 
 warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn.cluster._kmeans')
+# 我們將透過程式碼邏輯來避免 ConvergenceWarning，但也可以保留
+warnings.filterwarnings("ignore", category=UserWarning, module='sklearn.cluster._kmeans')
+
 
 class IPECalculator:
     """
     一個用於計算 IOI 模式熵 (IPE) 的工具類別。
-    現已支援 .mid 和 .json 兩種輸入格式。
+    【v2.0 - 穩健版】
+    - 新增了對 IOI 序列的過濾和限制規則。
+    - 新增了對 k-means 聚類的動態調整以避免 ConvergenceWarning。
     """
     def __init__(self, n_gram: int = 8, n_clusters: int = 16, 
-                 mu_entropy: float = 4.5, sigma_entropy: float = 0.5):
+                 mu_entropy: float = 8.2157, sigma_entropy: float = 0.9775,
+                 min_ioi: float = 0.001, max_ioi: float = 4.0):
+        """
+        初始化 IPE 計算器。
+
+        Args:
+            n_gram (int): N-gram 長度。
+            n_clusters (int): k-means 聚類的目標簇數量。
+            mu_entropy (float): 理想熵值。
+            sigma_entropy (float): 熵值容忍度。
+            min_ioi (float): 被視為同時發生的最小 IOI 間隔 (秒)。
+            max_ioi (float): IOI 間隔的最大值上限 (秒)。
+        """
         self.n_gram = n_gram
         self.n_clusters = n_clusters
         self.mu_entropy = mu_entropy
         self.sigma_entropy = sigma_entropy
+        self.min_ioi = min_ioi
+        self.max_ioi = max_ioi
+        print(f"IPE Calculator initialized with: n_gram={n_gram}, n_clusters={n_clusters}, μ_Hn={mu_entropy}, σ_c={sigma_entropy}")
+        print("NEW!")
+
+    def _process_raw_ioi(self, ioi_sequence: np.ndarray) -> np.ndarray:
+        """
+        【新】對原始 IOI 序列應用過濾和限制規則。
+        """
+        # 規則 1 & 2: 將小於 min_ioi 的間隔視為 0，然後過濾掉所有為 0 的間隔
+        processed_ioi = ioi_sequence[ioi_sequence >= self.min_ioi]
+        
+        # 規則 3: 將大於 max_ioi 的間隔值設為 max_ioi
+        processed_ioi[processed_ioi > self.max_ioi] = self.max_ioi
+        
+        return processed_ioi
 
     def get_ioi_from_json(self, json_path: str) -> np.ndarray:
-        """
-        從給定的 JSON 檔案中提取並計算 IOI 序列。
-
-        Args:
-            json_path (str): JSON 檔案的路徑。
-
-        Returns:
-            np.ndarray: IOI 時間間隔序列 (單位：秒)。
-        """
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 notes = json.load(f)
-            
-            if not notes:
-                return np.array([])
-            
-            # 提取所有音符的起始時間
+            if not notes: return np.array([])
             onsets = [note['onset'] for note in notes]
-            
-            # 後續邏輯與 get_ioi_from_midi 完全相同
             unique_onsets = np.unique(onsets)
             unique_onsets.sort()
-
-            if len(unique_onsets) < 2:
-                return np.array([])
+            if len(unique_onsets) < 2: return np.array([])
             
-            ioi_sequence = np.diff(unique_onsets)
-            return ioi_sequence
-
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Error processing JSON file {json_path}: Invalid format. {e}")
-            return np.array([])
+            raw_ioi = np.diff(unique_onsets)
+            # 【修改】呼叫新的處理函式
+            return self._process_raw_ioi(raw_ioi)
         except Exception as e:
-            print(f"An unexpected error occurred with file {json_path}: {e}")
+            print(f"Error processing JSON file {json_path}: {e}")
             return np.array([])
 
     def get_ioi_sequence(self, midi_path: str) -> np.ndarray:
@@ -68,23 +81,42 @@ class IPECalculator:
             unique_onsets = np.unique(onsets)
             unique_onsets.sort()
             if len(unique_onsets) < 2: return np.array([])
-            return np.diff(unique_onsets)
+            
+            raw_ioi = np.diff(unique_onsets)
+            # 【修改】呼叫新的處理函式
+            return self._process_raw_ioi(raw_ioi)
         except Exception as e:
             print(f"Error processing MIDI file {midi_path}: {e}")
             return np.array([])
 
+    def quantize_ioi_to_symbols(self, ioi_sequence: np.ndarray) -> np.ndarray:
+        """
+        【已修改】動態調整 k-means 的 n_clusters 以避免 ConvergenceWarning。
+        """
+        if ioi_sequence.size == 0: return np.array([])
 
+        log_ioi = np.log(ioi_sequence).reshape(-1, 1)
+        
+        # --- 【關鍵修改】動態調整 n_clusters ---
+        n_unique_points = len(np.unique(log_ioi))
+        
+        # 如果獨特的點少於目標簇數，則使用較小的值
+        actual_n_clusters = min(self.n_clusters, n_unique_points)
+        
+        # 如果聚類數小於2，則無法進行聚類
+        if actual_n_clusters < 2:
+            # print("Warning: Not enough unique IOI values to perform clustering.")
+            return np.array([])
+        # ---
+
+        kmeans = KMeans(n_clusters=actual_n_clusters, random_state=42, n_init=10)
+        kmeans.fit(log_ioi)
+        
+        return kmeans.labels_
+    
+    # calculate_ipe 和其他方法保持不變，因為它們的輸入已經被上游方法處理好了
     def calculate_ipe(self, file_path: str) -> dict:
-        """
-        執行完整的 IPE 計算流程。會根據副檔名自動選擇解析方法。
-
-        Args:
-            file_path (str): 要分析的 MIDI 或 JSON 檔案路徑。
-
-        Returns:
-            dict: 一個包含計算結果的字典。
-        """
-        # 步驟 1: 根據副檔名獲取 IOI 序列
+        # ... 此方法邏輯不變 ...
         if file_path.lower().endswith('.mid'):
             ioi_sequence = self.get_ioi_sequence(file_path)
         elif file_path.lower().endswith('.json'):
@@ -112,20 +144,14 @@ class IPECalculator:
             "ioi_sequence_length": len(ioi_sequence),
             "symbol_sequence_length": len(symbol_sequence)
         }
-    
-    def quantize_ioi_to_symbols(self, ioi_sequence: np.ndarray) -> np.ndarray:
-        valid_ioi = ioi_sequence[ioi_sequence > 1e-6]
-        if len(valid_ioi) < self.n_clusters: return np.array([])
-        log_ioi = np.log(valid_ioi).reshape(-1, 1)
-        kmeans = KMeans(n_clusters=self.n_clusters, random_state=42, n_init=10)
-        kmeans.fit(log_ioi)
-        return kmeans.labels_
 
     def get_ngrams_from_sequence(self, sequence: np.ndarray, n: int) -> list:
+        # ... 此方法邏輯不變 ...
         if len(sequence) < n: return []
         return [tuple(sequence[i:i+n]) for i in range(len(sequence) - n + 1)]
 
     def get_shannon_entropy(self, items: list) -> float:
+        # ... 此方法邏輯不變 ...
         if not items: return 0.0
         counts = Counter(items)
         total_items = len(items)
