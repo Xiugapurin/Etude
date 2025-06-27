@@ -3,6 +3,7 @@ import argparse
 import json
 import time
 import torch
+import pretty_midi
 from pathlib import Path
 
 # --- Path Setup ---
@@ -32,6 +33,7 @@ DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoint" / "decoder" / "etude_decode
 DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
 DEFAULT_GENERATION_VOLUME_FILE = DEFAULT_SRC_DIR / "volume.json"
 DEFAULT_GENERATION_OUTPUT_NOTE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.json"
+DEFAULT_GENERATION_OUTPUT_MIDI_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "etude_d_d.mid"
 DEFAULT_GENERATION_OUTPUT_SCORE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.musicxml"
 
 DEFAULT_MAX_OUTPUT_TOKENS = 25600
@@ -72,6 +74,24 @@ def save_notes_to_json(notes: list[dict], output_path: pathlib.Path):
         print(f"Generated note list saved to: {output_path}")
     except Exception as e:
         print(f"Error saving notes: {e}", file=sys.stderr)
+
+
+def note_to_midi(note_list, output_path):
+    midi = pretty_midi.PrettyMIDI()
+    instrument = pretty_midi.Instrument(program=0)
+
+    for note in note_list:
+        instrument.notes.append(
+            pretty_midi.Note(
+                velocity=note["velocity"],
+                pitch=note["pitch"],
+                start=note["onset"],
+                end=note["offset"],
+            )
+        )
+
+    midi.instruments.append(instrument)
+    midi.write(output_path)
 
 
 # --- Main Music Generation Logic ---
@@ -125,13 +145,12 @@ def run_music_generation(args):
         print(f"Generated {len(generated_event_sequence)} events.")
         note_list = tokenizer.decode_to_notes(events=generated_event_sequence, volume_map_path=DEFAULT_GENERATION_VOLUME_FILE)
         if note_list: 
-            save_notes_to_json(note_list, args.gen_output_note_file)
+            # save_notes_to_json(note_list, args.gen_output_note_file)
+            note_to_midi(note_list, args.gen_output_midi_file)
         
         # try:
             # tokenizer.decode_to_score(generated_event_sequence, path_out=args.gen_output_score_file)
         #     print(f"Score saved to {args.gen_output_score_file}")
-        # except NotImplementedError as e:
-        #     print(f"Skipping score generation: {e}")
         # except Exception as e:
         #     print(f"An unexpected error occurred during score generation: {e}", file=sys.stderr)
     else:
@@ -153,6 +172,7 @@ if __name__ == "__main__":
     gen_group.add_argument("--gen_beat_pred_file_for_tempo", type=pathlib.Path, default=DEFAULT_BEAT_PRED_FILE)
     gen_group.add_argument("--gen_tempo_file", type=pathlib.Path, default=DEFAULT_GENERATION_TEMPO_FILE)
     gen_group.add_argument("--gen_output_note_file", type=pathlib.Path, default=DEFAULT_GENERATION_OUTPUT_NOTE_FILE)
+    gen_group.add_argument("--gen_output_midi_file", type=pathlib.Path, default=DEFAULT_GENERATION_OUTPUT_MIDI_FILE)
     gen_group.add_argument("--gen_output_score_file", type=pathlib.Path, default=DEFAULT_GENERATION_OUTPUT_SCORE_FILE)
     gen_group.add_argument("--gen_config_path", type=pathlib.Path, default=DEFAULT_GENERATION_CONFIG_PATH)
     gen_group.add_argument("--gen_vocab_path", type=pathlib.Path, default=DEFAULT_GENERATION_VOCAB_PATH)
