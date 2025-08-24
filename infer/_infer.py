@@ -6,12 +6,9 @@ import torch
 import pretty_midi
 from pathlib import Path
 
-# --- Path Setup ---
 ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(ROOT))
-print(f"Project ROOT set to: {ROOT}")
 
-# --- Imports from project modules ---
 from corpus import extract
 from corpus import Vocab, MidiTokenizer
 from corpus.tempo import TempoInfoGenerator
@@ -33,7 +30,7 @@ DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoint" / "decoder" / "etude_decode
 DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
 DEFAULT_GENERATION_VOLUME_FILE = DEFAULT_SRC_DIR / "volume.json"
 DEFAULT_GENERATION_OUTPUT_NOTE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.json"
-DEFAULT_GENERATION_OUTPUT_MIDI_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "etude_d_d.mid"
+DEFAULT_GENERATION_OUTPUT_MIDI_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "etude_d.mid"
 DEFAULT_GENERATION_OUTPUT_SCORE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.musicxml"
 
 DEFAULT_MAX_OUTPUT_TOKENS = 25600
@@ -91,7 +88,8 @@ def note_to_midi(note_list, output_path):
         )
 
     midi.instruments.append(instrument)
-    midi.write(output_path)
+    with open(output_path, 'wb') as f:
+        midi.write(f)
 
 
 # --- Main Music Generation Logic ---
@@ -197,9 +195,12 @@ if __name__ == "__main__":
     if args.extract_path_output_midi: args.extract_path_output_midi.parent.mkdir(parents=True, exist_ok=True)
 
     print("\n--- Step 1: MIDI Extraction ---")
-    extract(str(args.extract_path_input_audio), str(args.extract_path_output_json),
-            str(args.extract_path_output_midi) if args.extract_path_output_midi else "",
-            str(args.extract_path_model))
+    extract(
+        str(args.extract_path_input_audio), 
+        str(args.extract_path_output_json),
+        str(args.extract_path_output_midi) if args.extract_path_output_midi else "",
+        str(args.extract_path_model)
+    )
 
     print(f"\n--- Intermediate Step: Tempo Generation ---")
     if args.gen_beat_pred_file_for_tempo.exists():
