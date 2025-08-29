@@ -1,214 +1,196 @@
 # train.py
 
+import argparse
+import math
+import json
+from pathlib import Path
+from datetime import datetime
+from typing import Dict
+
 import torch
 import torch.optim as optim
-from transformers import get_cosine_schedule_with_warmup
-from pathlib import Path
-import json
-import random
-import numpy as np
+import yaml
 from tqdm import tqdm
-import math
-import sys
-import shutil
-from datetime import datetime
-from typing import Dict, Optional
+from transformers import get_cosine_schedule_with_warmup
 
-from corpus import Vocab, EtudeDataset
-from models import EtudeDecoder, EtudeDecoderConfig
+from src.etude.data.dataset import EtudeDataset
+from src.etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
+from src.etude.decode.vocab import Vocab
+from src.etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
 
-
-# --- Configuration ---
-PREPROCESSED_DIR = Path("./dataset/tokenized/")
-VOCAB_PATH = PREPROCESSED_DIR / "vocab.json"
-CHECKPOINT_DIR = Path("./checkpoint/decoder/")
-BASE_CHECKPOINT_DIR = Path("./checkpoint/decoder/")
-MODEL_CONFIG_SAVE_PATH = PREPROCESSED_DIR / "etude_decoder_config.json"
-
-PAD_TOKEN = "<PAD>"
-ATTRIBUTE_PAD_ID = 0
-PAD_CLASS_ID = 0
-SEED = 1234
-LEARNING_RATE = 2e-4
-ADAM_B1 = 0.9
-ADAM_B2 = 0.98
-WEIGHT_DECAY = 0.01
-WARMUP_EPOCHS = 10
-NUM_EPOCHS = 200
-BATCH_SIZE = 8
-GRADIENT_ACCUMULATION_STEPS = 4
-CLIP_GRAD_NORM = 1.0
-
-CONTEXT_NUM_PAST_XY_PAIRS = 4
-NUM_ATTRIBUTE_BINS = 3
-
-MODEL_PARAMS = {
-    "hidden_size": 512, 
-    "num_hidden_layers": 8, 
-    "num_attention_heads": 8,
-    "intermediate_size": 2048, 
-    "hidden_act": "gelu", 
-    "max_position_embeddings": 1024,
-    "dropout_prob": 0.1, 
-    "num_classes": 3, 
-    "pad_class_id": PAD_CLASS_ID,
-    "rotary_pct": 0.25, 
-    "rotary_emb_base": 10000, 
-    "initializer_range": 0.02,
-    "layer_norm_eps": 1e-5, 
-    "use_cache": True, 
-    "tie_word_embeddings": False,
-
-    "num_avg_note_overlap_bins": NUM_ATTRIBUTE_BINS,
-    "avg_note_overlap_emb_dim": 64,
-    "num_rel_note_per_pos_bins": NUM_ATTRIBUTE_BINS,
-    "rel_note_per_pos_emb_dim": 64,
-    "num_rel_avg_duration_bins": NUM_ATTRIBUTE_BINS,
-    "rel_avg_duration_emb_dim": 64,
-    "num_rel_pos_density_bins": NUM_ATTRIBUTE_BINS,
-    "rel_pos_density_emb_dim": 64,
-
-    "attribute_pad_id": ATTRIBUTE_PAD_ID,
-    "context_num_past_xy_pairs": CONTEXT_NUM_PAST_XY_PAIRS
-}
-
-# Runtime Configuration
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DATA_SAVE_FORMAT = 'npy'
-DATASET_MAX_SEQ_LEN = MODEL_PARAMS["max_position_embeddings"]
-
-NUM_WORKERS_DATALOADER = 4 if sys.platform != 'win32' else 0
-CHECKPOINT_SAVE_EPOCHS = 10
-LOGGING_STEPS = 10000
-
-
-def set_seed(seed_value):
-    random.seed(seed_value); np.random.seed(seed_value)
-    torch.manual_seed(seed_value)
-    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed_value)
-
-
-def write_log(log_file_path, log_data):
-    try:
-        with open(log_file_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(log_data) + '\n')
-    except Exception as e:
-        print(f"Error writing to log file {log_file_path}: {e}")
-
-
-def save_checkpoint(model, optimizer, scheduler, epoch, global_step, run_checkpoint_dir, is_epoch_end=False):
-    run_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    payload = {'model_state_dict': model.state_dict(),'optimizer_state_dict': optimizer.state_dict(),'scheduler_state_dict': scheduler.state_dict() if scheduler else None, 'epoch': epoch,'global_step': global_step,'model_config': model.config.to_dict()}
-    latest_path = run_checkpoint_dir / "latest.pth"
-    torch.save(payload, latest_path)
-    if is_epoch_end:
-        epoch_path = run_checkpoint_dir / f"epoch_{(epoch + 1):04d}.pth"
-        shutil.copyfile(latest_path, epoch_path)
-        print(f"Epoch-specific checkpoint saved to {epoch_path}")
-
-
-def load_checkpoint(model, optimizer, scheduler, specific_run_dir, device):
-    start_epoch, global_step = 0, 0
-    checkpoint_to_load = specific_run_dir / "latest.pth"
-    if checkpoint_to_load.exists():
-        payload = torch.load(checkpoint_to_load, map_location=device)
-        model.load_state_dict({k.replace('module.',''):v for k,v in payload.get('model_state_dict', payload).items()}, strict=False)
-        if optimizer and 'optimizer_state_dict' in payload: optimizer.load_state_dict(payload['optimizer_state_dict'])
-        if scheduler and 'scheduler_state_dict' in payload: scheduler.load_state_dict(payload['scheduler_state_dict'])
-        global_step = payload.get('global_step', 0)
-        start_epoch = payload.get('epoch', -1) + 1
-        print(f"Checkpoint loaded. Resuming from Epoch {start_epoch}")
-    return start_epoch, global_step
-
-# --- Main Training Function ---
-def train(run_id: Optional[str] = None):
-    set_seed(SEED)
-    run_id_to_use = run_id if run_id else f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    current_run_checkpoint_dir = BASE_CHECKPOINT_DIR / run_id_to_use
-    current_run_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    log_file_path = current_run_checkpoint_dir / "train_log.jsonl"
-    print(f"Current Run ID: {run_id_to_use}\nCheckpoints & logs: {current_run_checkpoint_dir.resolve()}")
-
-    vocab = Vocab.load(VOCAB_PATH)
-    MODEL_PARAMS['vocab_size'] = len(vocab)
-    MODEL_PARAMS['pad_token_id'] = vocab.get_pad_id()
-
-    model_config_for_run = EtudeDecoderConfig(**MODEL_PARAMS)
-    with open(MODEL_CONFIG_SAVE_PATH, 'w') as f:
-        json.dump(model_config_for_run.to_dict(), f, indent=2)
-    print(f"Model configuration for this run saved to {MODEL_CONFIG_SAVE_PATH}")
-    
-    dataset = EtudeDataset(
-        dataset_dir=PREPROCESSED_DIR, 
-        vocab=vocab, 
-        max_seq_len=model_config_for_run.max_position_embeddings,
-        data_format=DATA_SAVE_FORMAT,
-        num_attribute_bins=NUM_ATTRIBUTE_BINS,
-        context_num_past_xy_pairs=CONTEXT_NUM_PAST_XY_PAIRS,
-        verbose_stats=True
-    )
-    dataloader = dataset.get_dataloader(BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS_DATALOADER)
-
-    model = EtudeDecoder(model_config_for_run).to(DEVICE)
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, betas=(ADAM_B1, ADAM_B2), weight_decay=WEIGHT_DECAY)
-    
-    num_update_steps_per_epoch = math.ceil(len(dataloader) / GRADIENT_ACCUMULATION_STEPS)
-    total_training_steps = num_update_steps_per_epoch * NUM_EPOCHS
-    warmup_steps = WARMUP_EPOCHS * num_update_steps_per_epoch
-    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_training_steps)
-
-    start_epoch, global_step = load_checkpoint(model, optimizer, scheduler, current_run_checkpoint_dir, DEVICE)
-    
-    model.train()
-    scaler = torch.amp.GradScaler(enabled=(DEVICE == "cuda"))
-    print("\n--- Starting Training ---")
-
-    for epoch in range(start_epoch, NUM_EPOCHS):
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}", unit="batch")
-        optimizer.zero_grad()
-
-        for batch_idx, batch in enumerate(pbar):
-            if not batch: continue
-            try:
-                input_ids = batch['input_ids'].to(DEVICE, non_blocking=True)
-                attention_mask = batch['attention_mask'].to(DEVICE, non_blocking=True)
-                class_ids = batch['class_ids'].to(DEVICE, non_blocking=True)
-                labels = batch['labels'].to(DEVICE, non_blocking=True)
-                avg_note_overlap_bin_ids = batch['note_overlap_bin_ids'].to(DEVICE, non_blocking=True)
-                rel_note_per_pos_bin_ids = batch['note_per_pos_bin_ids'].to(DEVICE, non_blocking=True)
-                rel_avg_duration_bin_ids = batch['avg_dur_bin_ids'].to(DEVICE, non_blocking=True)
-                rel_pos_density_bin_ids = batch['pos_dens_bin_ids'].to(DEVICE, non_blocking=True)
-            except KeyError as ke: continue
-
-            with torch.amp.autocast(device_type=DEVICE.split(':')[0], enabled=(DEVICE == "cuda")):
-                outputs = model(
-                    input_ids=input_ids, attention_mask=attention_mask, class_ids=class_ids,
-                    avg_note_overlap_bin_ids=avg_note_overlap_bin_ids,
-                    rel_note_per_pos_bin_ids=rel_note_per_pos_bin_ids,
-                    rel_avg_duration_bin_ids=rel_avg_duration_bin_ids,
-                    rel_pos_density_bin_ids=rel_pos_density_bin_ids,
-                    labels=labels, return_dict=True
-                )
-                loss = outputs.loss
-
-            if loss is None or torch.isnan(loss): continue
-            
-            scaler.scale(loss / GRADIENT_ACCUMULATION_STEPS).backward()
-            
-            if (batch_idx + 1) % GRADIENT_ACCUMULATION_STEPS == 0 or (batch_idx + 1) == len(dataloader):
-                scaler.unscale_(optimizer); 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), CLIP_GRAD_NORM)
-                scaler.step(optimizer); 
-                scaler.update()
-                scheduler.step(); 
-                optimizer.zero_grad(set_to_none=True)
-                global_step += 1
-                pbar.set_postfix({"Loss": f"{loss.item():.4f}", "LR": f"{scheduler.get_last_lr()[0]:.3e}"})
+class Trainer:
+    """Encapsulates the entire training process."""
+    def __init__(self, config: Dict):
+        self.config = config
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        is_save_epoch = ((epoch + 1) % CHECKPOINT_SAVE_EPOCHS == 0) or ((epoch + 1) == NUM_EPOCHS)
-        save_checkpoint(model, optimizer, scheduler, epoch, global_step, current_run_checkpoint_dir, is_epoch_end=is_save_epoch)
-        write_log(log_file_path, {"type": "epoch_log", "epoch": epoch, "loss": loss.item() if loss else None})
+        # --- Setup Environment and Paths ---
+        set_seed(self.config['environment']['seed'])
+        self.output_dir = Path(self.config['logging_and_checkpointing']['output_dir'])
+        run_id = self.config['run_id'] or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.run_dir = self.output_dir / run_id
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[SETUP] Run ID: {run_id}")
+        print(f"[SETUP] Device: {self.device}")
+        print(f"[SETUP] Checkpoints and logs will be saved to: {self.run_dir.resolve()}")
 
+        # --- Load Data ---
+        print("[SETUP] Loading vocabulary and dataset...")
+        vocab = Vocab.load(self.config['data']['vocab_path'])
+        self.model_config = self._create_model_config(vocab)
+
+        model_config_save_path = self.run_dir / "etude_decoder_config.json"
+        with open(model_config_save_path, 'w') as f:
+            json.dump(self.model_config.to_dict(), f, indent=2)
+        print(f"[SETUP] Final model configuration saved to: {model_config_save_path}")
+        
+        dataset = EtudeDataset(
+            dataset_dir=self.config['data']['dataset_dir'],
+            vocab=vocab,
+            max_seq_len=self.model_config.max_position_embeddings,
+            data_format=self.config['data']['data_format'],
+            num_attribute_bins=self.model_config.num_attribute_bins,
+            context_num_past_xy_pairs=self.model_config.context_num_past_xy_pairs,
+        )
+        self.dataloader = dataset.get_dataloader(
+            self.config['training']['batch_size'],
+            shuffle=True,
+            num_workers=self.config['data']['num_workers']
+        )
+        
+        # --- Initialize Model, Optimizer, Scheduler ---
+        print("[SETUP] Initializing model, optimizer, and scheduler...")
+        self.model = EtudeDecoder(self.model_config).to(self.device)
+        self.optimizer = optim.AdamW(
+            self.model.parameters(),
+            lr=self.config['training']['learning_rate'],
+            betas=(self.config['training']['adam_beta1'], self.config['training']['adam_beta2']),
+            weight_decay=self.config['training']['weight_decay']
+        )
+        self.scheduler = self._create_scheduler()
+        
+        # --- Resume from Checkpoint if specified ---
+        self.start_epoch, self.global_step = 0, 0
+        resume_run_id = self.config['logging_and_checkpointing'].get('resume_from_checkpoint')
+        if resume_run_id:
+            resume_dir = self.output_dir / resume_run_id
+            self.start_epoch, self.global_step = load_checkpoint(
+                resume_dir, self.model, self.optimizer, self.scheduler, self.device
+            )
+
+    def _create_model_config(self, vocab: Vocab) -> EtudeDecoderConfig:
+        """Creates the model configuration from the YAML config."""
+        model_cfg = self.config['model']
+        # Dynamically set attribute bin dimensions
+        num_bins = model_cfg['num_attribute_bins']
+        emb_dim = model_cfg['attribute_emb_dim']
+        
+        return EtudeDecoderConfig(
+            vocab_size=len(vocab),
+            pad_token_id=vocab.get_pad_id(),
+            hidden_size=model_cfg['hidden_size'],
+            num_hidden_layers=model_cfg['num_hidden_layers'],
+            num_attention_heads=model_cfg['num_attention_heads'],
+            intermediate_size=model_cfg['intermediate_size'],
+            max_position_embeddings=model_cfg['max_position_embeddings'],
+            num_classes=model_cfg['num_classes'],
+            pad_class_id=model_cfg['pad_class_id'],
+            attribute_pad_id=model_cfg['attribute_pad_id'],
+            context_num_past_xy_pairs=model_cfg['context_num_past_xy_pairs'],
+            # Attributes
+            num_relative_polyphony_bins=num_bins,
+            relative_polyphony_emb_dim=emb_dim,
+            num_relative_rhythmic_intensity_bins=num_bins,
+            relative_rhythmic_intensity_emb_dim=emb_dim,
+            num_relative_note_sustain_bins=num_bins,
+            relative_note_sustain_emb_dim=emb_dim,
+            num_pitch_overlap_ratio_bins=num_bins,
+            pitch_overlap_ratio_emb_dim=emb_dim,
+        )
+
+    def _create_scheduler(self):
+        """Creates the learning rate scheduler."""
+        cfg = self.config['training']
+        num_epochs = cfg['num_epochs']
+        num_update_steps_per_epoch = math.ceil(len(self.dataloader) / cfg['gradient_accumulation_steps'])
+        total_training_steps = num_update_steps_per_epoch * num_epochs
+        warmup_steps = cfg['warmup_epochs'] * num_update_steps_per_epoch
+        
+        return get_cosine_schedule_with_warmup(
+            self.optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=total_training_steps
+        )
+
+    def train(self):
+        """Runs the main training loop."""
+        print("\n[START] Beginning training loop...")
+        scaler = torch.amp.GradScaler(enabled=(self.device == "cuda"))
+        self.model.train()
+        
+        for epoch in range(self.start_epoch, self.config['training']['num_epochs']):
+            pbar = tqdm(self.dataloader, desc=f"Epoch {epoch+1}/{self.config['training']['num_epochs']}", unit="batch")
+            self.optimizer.zero_grad()
+            
+            for batch_idx, batch in enumerate(pbar):
+                if not batch: continue
+                
+                # Move batch to device
+                batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
+                
+                with torch.amp.autocast(device_type=self.device.split(':')[0], enabled=(self.device == "cuda")):
+                    outputs = self.model(
+                        input_ids=batch['input_ids'],
+                        attention_mask=batch['attention_mask'],
+                        class_ids=batch['class_ids'],
+                        labels=batch['labels'],
+                        polyphony_bin_ids=batch['polyphony_bin_ids'],
+                        rhythm_intensity_bin_ids=batch['rhythm_intensity_bin_ids'],
+                        note_sustain_bin_ids=batch['sustain_bin_ids'],
+                        pitch_overlap_bin_ids=batch['pitch_overlap_bin_ids'],
+                        return_dict=True
+                    )
+                    loss = outputs.loss
+
+                if loss is None or torch.isnan(loss): continue
+                
+                scaler.scale(loss / self.config['training']['gradient_accumulation_steps']).backward()
+                
+                if (batch_idx + 1) % self.config['training']['gradient_accumulation_steps'] == 0:
+                    scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['clip_grad_norm'])
+                    scaler.step(self.optimizer)
+                    scaler.update()
+                    self.scheduler.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+                    self.global_step += 1
+                
+                pbar.set_postfix({"Loss": f"{loss.item():.4f}", "LR": f"{self.scheduler.get_last_lr()[0]:.3e}"})
+
+            # --- End of Epoch ---
+            is_save_epoch = ((epoch + 1) % self.config['logging_and_checkpointing']['save_every_n_epochs'] == 0) or \
+                            ((epoch + 1) == self.config['training']['num_epochs'])
+            
+            save_checkpoint(
+                self.run_dir, self.model, self.optimizer, self.scheduler,
+                epoch, self.global_step, is_epoch_end=is_save_epoch
+            )
+
+        print("\n[SUCCESS] Training finished.")
+
+def main():
+    parser = argparse.ArgumentParser(description="Train the EtudeDecoder model.")
+    parser.add_argument(
+        "--config", type=str, default="configs/training_config.yaml",
+        help="Path to the training configuration YAML file."
+    )
+    args = parser.parse_args()
+    
+    with open(args.config, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    trainer = Trainer(config)
+    trainer.train()
 
 if __name__ == "__main__":
-    train()
+    main()

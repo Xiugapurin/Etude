@@ -30,13 +30,14 @@ env/
 
 .vscode/
 .idea/
+*.egg*/
 
 data/
 dataset/
 dataset/eval
 .cache/
 
-/checkpoint/
+/checkpoints/
 /beat_detection/checkpoint/
 /pretrained_models/
 /infer/src/

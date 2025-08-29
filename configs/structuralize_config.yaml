@@ -1,0 +1,20 @@
+# Configuration for the structuralization stage, including beat detection.
+
+beat_detection:
+  # DBN Beat Tracker Parameters (from madmom)
+  min_bpm: 70.0
+  max_bpm: 250.0
+  fps_divisor: 1024 # Divisor for 44100 Hz sample rate
+  threshold: 0.2
+  beats_per_bar: [3, 4]
+
+  # Model architecture parameters for Demixed_DilatedTransformerModel
+  model:
+    attn_len: 5
+    instr: 5
+    ntoken: 2
+    dmodel: 256
+    nhead: 8
+    d_hid: 1024
+    nlayers: 9
+    norm_first: True

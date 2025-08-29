@@ -22,11 +22,11 @@ DEFAULT_BEAT_PRED_FILE = ROOT / "infer" / "src" / "beat_pred.json"
 DEFAULT_EXTRACT_INPUT_AUDIO_NAME = "origin.wav"
 DEFAULT_EXTRACT_OUTPUT_JSON_NAME = "extract.json"
 DEFAULT_EXTRACT_OUTPUT_MIDI_NAME = "etude_e.mid"
-DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoint" / "extractor" / "9.pth"
+DEFAULT_EXTRACTOR_MODEL_PATH = ROOT / "checkpoints" / "extractor" / "9.pth"
 
 DEFAULT_GENERATION_VOCAB_PATH = ROOT / "dataset" / "tokenized" / "vocab.json"
-DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoint" / "decoder" / "90.pth"
-DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoint" / "decoder" / "etude_decoder_config.json"
+DEFAULT_GENERATION_CHECKPOINT_PATH = ROOT / "checkpoints" / "decoder" / "90.pth"
+DEFAULT_GENERATION_CONFIG_PATH = ROOT / "checkpoints" / "decoder" / "etude_decoder_config.json"
 DEFAULT_GENERATION_TEMPO_FILE = DEFAULT_SRC_DIR / "tempo.json"
 DEFAULT_GENERATION_VOLUME_FILE = DEFAULT_SRC_DIR / "volume.json"
 DEFAULT_GENERATION_OUTPUT_NOTE_FILE = DEFAULT_GENERATION_OUTPUT_DIR / "output.json"
@@ -138,6 +138,11 @@ def run_music_generation(args):
         max_bar_token_limit=args.gen_max_bar_token_limit, temperature=args.gen_temp, top_p=args.gen_top_p
     )
     print(f"Music generation process took {time.time() - start_time:.2f} seconds.")
+
+    print("[DEBUG] Saving OLD generated events for comparison...")
+    with open("generated_events_OLD.txt", "w") as f:
+        for event in generated_event_sequence:
+            f.write(str(event) + "\n")
 
     if generated_event_sequence:
         print(f"Generated {len(generated_event_sequence)} events.")

@@ -1,0 +1,50 @@
+# Configuration for the main training pipeline of the EtudeDecoder model.
+
+# --- Environment and Paths ---
+run_id: "etude_decoder_v1" # A specific name for this training run
+seed: 1234
+output_dir: "./outputs" # Base directory for all outputs (checkpoints, logs)
+
+data:
+  dataset_dir: "./dataset/tokenized/"
+  vocab_path: "./dataset/tokenized/vocab.json"
+  data_format: "npy"
+  num_workers: 4 # Set to 0 for Windows
+
+# --- Model Architecture ---
+# This section directly configures the EtudeDecoderConfig
+model:
+  hidden_size: 512
+  num_hidden_layers: 8
+  num_attention_heads: 8
+  intermediate_size: 2048
+  max_position_embeddings: 1024
+
+  num_classes: 3
+  pad_class_id: 0
+  attribute_pad_id: 0
+  context_num_past_xy_pairs: 4
+
+  # Musical attribute embedding parameters
+  num_attribute_bins: 3 # This will be used for all attribute dimensions below
+  attribute_emb_dim: 64
+
+# --- Training Parameters ---
+training:
+  num_epochs: 200
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.98
+  clip_grad_norm: 1.0
+
+  # Learning rate scheduler
+  scheduler: "cosine_with_warmup"
+  warmup_epochs: 10
+
+# --- Logging and Checkpointing ---
+checkpointing:
+  save_every_n_epochs: 10 # Save a permanent checkpoint every N epochs
+  resume_from_checkpoint: null # Specify a run_id to resume, or null to start fresh

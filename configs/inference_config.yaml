@@ -1,0 +1,38 @@
+# Configuration for the end-to-end inference pipeline.
+
+# --- General Settings ---
+general:
+  # A temporary directory for all intermediate files. A timestamped subfolder will be created here.
+  output_dir: "outputs/inference"
+  device: "auto" # 'auto', 'cuda', or 'cpu'
+
+# --- Stage 0: Preprocessing ---
+preprocessing:
+  # Names of the isolated conda environments required for these steps.
+  spleeter_env_name: "py38_spleeter"
+  madmom_env_name: "py38_madmom"
+
+# --- Stage 1: Extract (Audio -> Notes) ---
+# See configs/extract_config.yaml for model architecture details.
+extractor:
+  model_path: "checkpoints/extractor/9.pth"
+  config_path: "configs/extract_config.yaml"
+
+# --- Stage 2: Structuralize (Notes -> Tempo Structure) ---
+# See configs/structuralize_config.yaml for model architecture details.
+structuralizer:
+  beat_model_path: "checkpoints/beat_detector/latest.pt"
+  config_path: "configs/structuralize_config.yaml"
+
+# --- Stage 3: Decode (Structured Notes -> Final Music) ---
+# See configs/training_config.yaml for model architecture details.
+decoder:
+  model_path: "checkpoints/decoder/latest.pth"
+  config_path: "checkpoints/decoder/etude_decoder_config.json"
+  vocab_path: "dataset/tokenized/vocab.json"
+
+  # Generation (sampling) parameters
+  max_output_tokens: 25600
+  max_bar_token_limit: 512
+  temperature: 0
+  top_p: 0.9

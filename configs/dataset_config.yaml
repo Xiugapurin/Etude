@@ -1,0 +1,21 @@
+# Configuration for preparing the main dataset for the decode stage.
+
+# --- Input/Output Paths ---
+# Directory containing subdirectories of processed data from extract/structuralize stages.
+# Each subdir should contain: extract.json, cover.json, tempo.json
+base_data_dir: "dataset/synced/"
+
+# Directory to save the final tokenized dataset files.
+output_dir: "dataset/tokenized/"
+
+# Filename for the vocabulary.
+vocab_filename: "vocab.json"
+
+# --- Tokenization & Saving ---
+# The format to save the final encoded sequences ('npy', 'pt', 'json').
+save_format: "npy"
+
+# --- Dataset Validation ---
+# max_seq_len used for the final statistics calculation step.
+# This should match the `max_seq_len` you intend to use for training.
+max_seq_len_for_stats: 1024
