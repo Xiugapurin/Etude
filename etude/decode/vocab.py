@@ -5,8 +5,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Union
 
-import numpy as np
-
 # --- Special Tokens ---
 PAD_TOKEN = "<PAD>"
 BOS_TOKEN = "<BOS>"

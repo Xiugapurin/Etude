@@ -1,7 +1,7 @@
 # src/etude/extraction/pipeline.py
 
 """
-Audio-to-Note Extraction Pipeline.
+Audio-to-MIDI Extraction Pipeline.
 
 This module provides the main class `AMT_Extractor` for performing Automatic Music Transcription (AMT).
 

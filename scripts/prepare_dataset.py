@@ -9,9 +9,9 @@ import traceback
 import yaml
 from tqdm import tqdm
 
-from src.etude.decode.tokenizer import MidiTokenizer
-from src.etude.decode.vocab import Vocab, PAD_TOKEN
-from src.etude.data.dataset import EtudeDataset
+from etude.decode.tokenizer import MidiTokenizer
+from etude.decode.vocab import Vocab, PAD_TOKEN
+from etude.data.dataset import EtudeDataset
 
 
 def _tokenize_and_build_vocab(base_dir: Path, vocab_path: Path) -> tuple:

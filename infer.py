@@ -1,24 +1,21 @@
 # infer.py
 
 import sys
-import json
 import yaml
 import shutil
 import argparse
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 import torch
 
-# Import all refactored modules
-from src.etude.extract.extractor import AMT_Extractor
-from src.etude.structuralize.beat_analyzer import BeatAnalyzer
-from src.etude.structuralize.audio_analyzer import analyze_volume, save_volume_map
-from src.etude.decode.tokenizer import MidiTokenizer
-from src.etude.decode.vocab import Vocab
-from src.etude.utils.model_loader import load_etude_decoder
-from src.etude.utils.download import download_audio_from_url
+from etude.extract.extractor import AMT_Extractor
+from etude.structuralize.beat_analyzer import BeatAnalyzer
+from etude.structuralize.audio_analyzer import analyze_volume, save_volume_map
+from etude.decode.tokenizer import MidiTokenizer
+from etude.decode.vocab import Vocab
+from etude.utils.model_loader import load_etude_decoder
+from etude.utils.download import download_audio_from_url
 
 
 class InferencePipeline:
@@ -45,9 +42,9 @@ class InferencePipeline:
             # For clarity, let's capture and print stdout on success
             result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
             if result.stdout:
-                print(f"           > Subprocess output:\n{result.stdout.strip()}")
+                print(f"    > Subprocess output:\n{result.stdout.strip()}")
         except subprocess.CalledProcessError as e:
-            print(f"  ❌ Error executing command: {' '.join(command)}", file=sys.stderr)
+            print(f"[Error] Error executing command: {' '.join(command)}", file=sys.stderr)
             print(f"  {e.stderr}", file=sys.stderr)
             sys.exit(1)
 
@@ -56,19 +53,19 @@ class InferencePipeline:
         Ensures the source audio is available locally in the working directory.
         Handles both URLs and local file paths.
         """
-        print("\n[STAGE 0] Preparing Source Audio...")
+        print("Downloading Source Audio...")
         local_audio_path = self.work_dir / "origin.wav"
 
         if urlparse(source).scheme in ('http', 'https'):
             success = download_audio_from_url(source, local_audio_path)
             if not success:
-                print("  ❌ Fatal: Audio download failed. Exiting.", file=sys.stderr)
+                print("[Fatal] Audio download failed. Exiting.", file=sys.stderr)
                 sys.exit(1)
         elif Path(source).is_file():
-            print(f"           > Copying local file '{source}' to working directory.")
+            print(f"    > Copying local file '{source}' to working directory.")
             shutil.copy(source, local_audio_path)
         else:
-            print(f"  ❌ Fatal: Input source '{source}' is not a valid URL or local file.", file=sys.stderr)
+            print(f"[Fatal] Input source '{source}' is not a valid URL or local file.", file=sys.stderr)
             sys.exit(1)
         
         return local_audio_path
@@ -83,28 +80,9 @@ class InferencePipeline:
             final_filename (str): The base name for the final output file (without extension).
         """
         audio_path = self._prepare_audio(audio_source)
-        
-        print("\n[STAGE 0] Running Preprocessing...")
-        spleeter_cmd = [ "conda", "run", "-n", self.config['preprocessing']['spleeter_env_name'],
-                         "python", "scripts/run_separation.py",
-                         "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
-        print("           > Running source separation (spleeter)...")
-        self._run_command(spleeter_cmd)
 
-        beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocessing']['madmom_env_name'],
-                               "python", "scripts/run_beat_detection.py",
-                               "--input_npy", str(self.work_dir / "sep.npy"),
-                               "--output_json", str(self.work_dir / "beat_pred.json"),
-                               "--model_path", self.config['structuralizer']['beat_model_path'],
-                               "--config_path", self.config['structuralizer']['config_path'] ]
-        print("           > Running beat detection (madmom)...")
-        self._run_command(beat_detection_cmd)
+        print("\n[STAGE 1] Extracting feature notes")
 
-        print("           > Analyzing volume contour...")
-        volume_map = analyze_volume(audio_path)
-        save_volume_map(volume_map, self.work_dir / "volume.json")
-
-        print("\n[STAGE 1] Extracting feature notes...")
         ext_cfg = self.config['extractor']
         with open(ext_cfg['config_path'], 'r') as f: 
             amt_config = yaml.safe_load(f)
@@ -115,12 +93,35 @@ class InferencePipeline:
             output_json_path=str(self.work_dir / "extract.json")
         )
 
-        print("\n[STAGE 2] Structuralizing tempo information...")
+        print("    > Analyzing volume contour")
+        volume_map = analyze_volume(audio_path)
+        save_volume_map(volume_map, self.work_dir / "volume.json")
+
+
+        print("\n[STAGE 2] Structuralizing tempo information")
+
+        spleeter_cmd = [ "conda", "run", "-n", self.config['preprocessing']['spleeter_env_name'],
+                         "python", "scripts/run_separation.py",
+                         "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
+        print("    > Running source separation for beat detection")
+        self._run_command(spleeter_cmd)
+
+        beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocessing']['madmom_env_name'],
+                               "python", "scripts/run_beat_detection.py",
+                               "--input_npy", str(self.work_dir / "sep.npy"),
+                               "--output_json", str(self.work_dir / "beat_pred.json"),
+                               "--model_path", self.config['structuralizer']['beat_model_path'],
+                               "--config_path", self.config['structuralizer']['config_path'] ]
+        print("    > Running beat detection")
+        self._run_command(beat_detection_cmd)
+
         beat_analyzer = BeatAnalyzer()
         tempo_data = beat_analyzer.analyze(self.work_dir / "beat_pred.json")
         BeatAnalyzer.save_tempo_data(tempo_data, self.work_dir / "tempo.json")
 
-        print("\n[STAGE 3] Decoding with target attributes to generate final music...")
+
+        print("\n[STAGE 3] Decoding with target attributes to generate piano cover...")
+
         dec_cfg = self.config['decoder']
         model = load_etude_decoder(dec_cfg['config_path'], dec_cfg['model_path'], self.device)
         vocab = Vocab.load(dec_cfg['vocab_path'])
@@ -139,22 +140,19 @@ class InferencePipeline:
             target_attributes_per_bar=target_attributes_per_bar,
             temperature=dec_cfg['temperature'], top_p=dec_cfg['top_p']
         )
-
-        print("[DEBUG] Saving NEW generated events for comparison...")
-        with open("generated_events_NEW.txt", "w") as f:
-            for event in generated_events:
-                f.write(str(event) + "\n")
         
         if generated_events:
             final_notes = tokenizer.decode_to_notes(
-                events=generated_events, volume_map_path=self.work_dir / "volume.json"
+                events=generated_events, 
+                volume_map_path=self.work_dir / "volume.json"
             )
 
             final_midi_path = self.output_dir / f"{final_filename}.mid"
             tokenizer.note_to_midi(final_notes, final_midi_path)
-            print(f"           > Final MIDI saved to: {final_midi_path.resolve()}")
+
+            print(f"    > Final MIDI saved to: {final_midi_path.resolve()}")
         else:
-            print("           > Warning: Model generated an empty sequence.")
+            print("    > [Warning] Model generated an empty sequence.")
 
         print("\n[SUCCESS] Inference pipeline finished successfully!")
 

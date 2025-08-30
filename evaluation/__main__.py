@@ -16,7 +16,6 @@ sys.path.insert(0, str(ROOT))
 from evaluation import RGCCalculator, IPECalculator, WPDCalculator
 
 def get_genre_from_dirname(dir_name: str) -> str:
-    # ... (此函式不變) ...
     dir_name_upper = dir_name.upper()
     if "CPOP" in dir_name_upper: return "CPOP"
     elif "JPOP" in dir_name_upper: return "JPOP"

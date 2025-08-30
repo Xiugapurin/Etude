@@ -19,7 +19,6 @@ from transformers import GPTNeoXConfig, GPTNeoXModel, PreTrainedModel, Pretraine
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from tqdm import tqdm
 
-from ..decode.vocab import Vocab, Event
 from ..data.dataset import COND_CLASS_ID, TGT_CLASS_ID
 
 COND_CLASS_ID = 1

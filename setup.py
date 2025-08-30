@@ -9,6 +9,5 @@ setup(
     author="Xiugapurin",
     author_email="my.email@example.com",
     
-    package_dir={"": "src"},
-    packages=find_packages(where="src")
+    packages=find_packages(),
 )

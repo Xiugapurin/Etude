@@ -16,7 +16,7 @@ import yaml
 from madmom.features.beats import DBNBeatTrackingProcessor
 from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 
-from src.etude.models.beat_transformer import Demixed_DilatedTransformerModel
+from etude.models.beat_transformer import Demixed_DilatedTransformerModel
 
 
 class BeatDetector:
