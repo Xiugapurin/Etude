@@ -1,0 +1,30 @@
+# Configuration for the evaluation pipeline.
+
+# --- Paths and Data ---
+eval_dir: "songs"
+metadata_path: "songs/metadata.json"
+output_dir: "outputs/evaluation"
+report_image_filename: "evaluation_summary.png"
+report_csv_filename: "evaluation_results.csv"
+
+# --- Versions to Evaluate ---
+# The key is the identifier used in filenames (e.g., 'cover.mid', 'etude_d.mid')
+# The value is the display name used in reports and plots.
+versions:
+  human: "Human"
+  etude_e: "Etude Extractor"
+  etude_d_d: "Etude Decoder - Default"
+  etude_d: "Etude Decoder - Prompted"
+  picogen: "PiCoGen"
+  amtapc: "AMT-APC"
+  music2midi: "Music2MIDI"
+
+metrics:
+  wpd:
+    subsample_step: 1
+    trim_seconds: 10
+  rgc:
+    top_k: 8
+  ipe:
+    n_gram: 8
+    n_clusters: 16

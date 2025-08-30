@@ -36,45 +36,45 @@ class AudioAligner:
         """
         self.fs = fs
         self.feature_rate = feature_rate
+        
         # --- Default parameters for MRMSDTW ---
         self.step_weights = np.array([1.5, 1.5, 2.0])
         self.threshold_rec = 10 ** 6
         self.win_len_smooth = np.array([101, 51, 21, 1])
 
-    def align(self, origin_audio_path: Union[str, Path], cover_audio_path: Union[str, Path], cache_path: Optional[Union[str, Path]] = None) -> Optional[Dict]:
+    def align(
+        self, 
+        origin_audio_path: Union[str, Path], 
+        cover_audio_path: Union[str, Path], 
+        song_dir: Union[str, Path]
+    ) -> Optional[Dict]:
         """
-        Aligns two audio files to find the optimal warping path and pitch shift.
-
-        This is the main public method. It handles loading/saving from a cache file
-        and orchestrates the alignment process.
-
-        Args:
-            origin_audio_path (Union[str, Path]): Path to the reference audio file.
-            cover_audio_path (Union[str, Path]): Path to the audio file to be aligned.
-            cache_path (Optional): Path to a .json file for loading/saving the alignment result.
-
-        Returns:
-            A dictionary containing the warping path and other alignment info, e.g.,
-            {'wp': np.ndarray, 'pitch_shift': int, ...}, or None if alignment fails.
+        Aligns two audio files using a "cache-first" strategy with a rich cache format.
+        If a valid cache entry is found, it returns the cached data WITHOUT accessing audio files.
         """
-        if cache_path and Path(cache_path).exists():
-            cached_result = self._load_from_cache(cache_path)
-            if cached_result:
-                print(f"Alignment result successfully loaded from cache: {cache_path}")
-                return cached_result
+        version_key = Path(cover_audio_path).stem
         
+        # Step 1: Attempt to load the complete result from the rich cache.
+        cached_result = self._load_from_cache(song_dir, version_key)
+        if cached_result:
+            return cached_result
+        
+        # Step 2: Cache miss. Fallback to full alignment, which requires .wav files.
+        print(f"    > [INFO] No valid cache for '{version_key}'. Attempting alignment from .wav files.")
+        
+        if not Path(origin_audio_path).exists() or not Path(cover_audio_path).exists():
+            return None 
+
         try:
             origin_audio, _ = librosa.load(str(origin_audio_path), sr=self.fs)
             cover_audio, _ = librosa.load(str(cover_audio_path), sr=self.fs)
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
+        except Exception as e:
+            print(f"    > [ERROR] Failed to load audio files for alignment: {e}")
             return None
 
+        # Compute the full result from scratch.
         result = self._compute_warping_path(origin_audio, cover_audio)
-
-        if cache_path:
-            self._save_to_cache(result, cache_path)
-            
+        self._save_to_cache(song_dir, version_key, result)
         return result
 
     def _get_features(self, audio: np.ndarray, tuning_offset: float) -> tuple[np.ndarray, np.ndarray]:
@@ -135,28 +135,41 @@ class AudioAligner:
             "num_frames_origin": f_chroma_origin.shape[1]
         }
 
-    def _load_from_cache(self, cache_path: Union[str, Path]) -> Optional[Dict]:
-        """Loads alignment results from a JSON cache file."""
+    def _load_from_cache(self, song_dir: Union[str, Path], version_key: str) -> Optional[Dict]:
+        """Loads a rich alignment result from the shared 'wp.json' cache file."""
+        cache_path = Path(song_dir) / "wp.json"
+        if not cache_path.exists(): return None
         try:
             with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            # Convert list back to numpy array
-            data['wp'] = np.array(data['wp'], dtype=int)
-            return data
-        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+                all_data = json.load(f)
+            
+            version_data = all_data.get(version_key)
+            # Check if the cached data has the rich format
+            if isinstance(version_data, dict) and all(k in version_data for k in ["wp", "num_frames_cover", "num_frames_origin"]):
+                version_data['wp'] = np.array(version_data['wp'], dtype=int)
+                # Add pitch_shift if it's not in the simple cache
+                version_data.setdefault('pitch_shift', 0)
+                return version_data
+            return None
+        except (json.JSONDecodeError, KeyError, TypeError):
             return None
 
-    def _save_to_cache(self, result_data: Dict, cache_path: Union[str, Path]):
-        """Saves alignment results to a JSON cache file."""
-        path = Path(cache_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+    def _save_to_cache(self, song_dir: Union[str, Path], version_key: str, result_data: Dict):
+        """Saves a rich alignment result to the shared 'wp.json' cache file."""
+        cache_path = Path(song_dir) / "wp.json"
+        all_data = {}
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    all_data = json.load(f)
+            except json.JSONDecodeError: pass
         
-        # Make a copy to avoid modifying the original dict
+        # Make a copy to avoid modifying the original dict and convert wp to list
         data_to_save = result_data.copy()
-        # Convert numpy array to list for JSON serialization
         data_to_save['wp'] = result_data['wp'].tolist()
         
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data_to_save, f, indent=4)
-
-        print(f"Alignment result saved to cache: {path}")
+        all_data[version_key] = data_to_save
+        
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(all_data, f, indent=4)
+        print(f"           > Rich alignment data for '{version_key}' saved to cache: {cache_path}")
