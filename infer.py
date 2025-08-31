@@ -12,7 +12,7 @@ import torch
 from etude.extract.extractor import AMT_Extractor
 from etude.structuralize.beat_analyzer import BeatAnalyzer
 from etude.structuralize.audio_analyzer import analyze_volume, save_volume_map
-from etude.decode.tokenizer import MidiTokenizer
+from etude.decode.tokenizer import TinyREMITokenizer
 from etude.decode.vocab import Vocab
 from etude.utils.model_loader import load_etude_decoder
 from etude.utils.download import download_audio_from_url
@@ -32,57 +32,41 @@ class InferencePipeline:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.work_dir.mkdir(parents=True, exist_ok=True)
         
-        print(f"[PIPELINE] Device: {self.device}")
-        print(f"[PIPELINE] Final outputs will be saved to: {self.output_dir.resolve()}")
-        print(f"[PIPELINE] Intermediate files will be stored in: {self.work_dir.resolve()}")
+        print(f"[INFO] Device: {self.device}")
+        print(f"[INFO] Final outputs will be saved to: {self.output_dir.resolve()}")
+        print(f"[INFO] Intermediate files are stored in: {self.work_dir.resolve()}")
 
     def _run_command(self, command: list):
         """Helper to run a command and check for errors."""
         try:
-            # For clarity, let's capture and print stdout on success
             result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
-            if result.stdout:
-                print(f"    > Subprocess output:\n{result.stdout.strip()}")
         except subprocess.CalledProcessError as e:
-            print(f"[Error] Error executing command: {' '.join(command)}", file=sys.stderr)
+            print(f"[ERROR] Error executing command: {' '.join(command)}", file=sys.stderr)
             print(f"  {e.stderr}", file=sys.stderr)
             sys.exit(1)
 
     def _prepare_audio(self, source: str) -> Path:
-        """
-        Ensures the source audio is available locally in the working directory.
-        Handles both URLs and local file paths.
-        """
-        print("Downloading Source Audio...")
+        """Ensures the source audio is available locally in the working directory."""
+        print("    > Preparing source audio.")
         local_audio_path = self.work_dir / "origin.wav"
 
         if urlparse(source).scheme in ('http', 'https'):
             success = download_audio_from_url(source, local_audio_path)
             if not success:
-                print("[Fatal] Audio download failed. Exiting.", file=sys.stderr)
+                print("[ERROR] Audio download failed. Exiting.", file=sys.stderr)
                 sys.exit(1)
         elif Path(source).is_file():
-            print(f"    > Copying local file '{source}' to working directory.")
             shutil.copy(source, local_audio_path)
         else:
-            print(f"[Fatal] Input source '{source}' is not a valid URL or local file.", file=sys.stderr)
+            print(f"[ERROR] Input source '{source}' is not a valid URL or local file.", file=sys.stderr)
             sys.exit(1)
         
         return local_audio_path
 
-    def run(self, audio_source: str, target_attributes: dict, final_filename: str):
-        """
-        Executes the full inference pipeline.
-        
-        Args:
-            audio_source (str): Path or URL to the input audio.
-            target_attributes (dict): Dictionary of target attribute bins for generation.
-            final_filename (str): The base name for the final output file (without extension).
-        """
-        audio_path = self._prepare_audio(audio_source)
-
-        print("\n[STAGE 1] Extracting feature notes")
-
+    # --- NEW: Stage-specific methods for clarity ---
+    def _run_stage1_extract(self, audio_path: Path):
+        """Runs the AMT extraction process."""
+        print("\n[STAGE 1] Extracting feature notes...")
         ext_cfg = self.config['extractor']
         with open(ext_cfg['config_path'], 'r') as f: 
             amt_config = yaml.safe_load(f)
@@ -93,39 +77,40 @@ class InferencePipeline:
             output_json_path=str(self.work_dir / "extract.json")
         )
 
-        print("    > Analyzing volume contour")
+        print("    > Analyzing volume contour.")
         volume_map = analyze_volume(audio_path)
         save_volume_map(volume_map, self.work_dir / "volume.json")
 
-
-        print("\n[STAGE 2] Structuralizing tempo information")
-
+    def _run_stage2_structuralize(self, audio_path: Path):
+        """Runs the beat detection and tempo analysis process."""
+        print("\n[STAGE 2] Structuralizing tempo information.")
         spleeter_cmd = [ "conda", "run", "-n", self.config['preprocessing']['spleeter_env_name'],
-                         "python", "scripts/run_separation.py",
+                         "python", "scripts/preprocessing/run_separation.py",
                          "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
-        print("    > Running source separation for beat detection")
+        print("    > Running source separation for beat detection...")
         self._run_command(spleeter_cmd)
 
         beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocessing']['madmom_env_name'],
-                               "python", "scripts/run_beat_detection.py",
+                               "python", "scripts/structuralize/run_beat_detection.py",
                                "--input_npy", str(self.work_dir / "sep.npy"),
                                "--output_json", str(self.work_dir / "beat_pred.json"),
                                "--model_path", self.config['structuralizer']['beat_model_path'],
                                "--config_path", self.config['structuralizer']['config_path'] ]
-        print("    > Running beat detection")
+        print("    > Running beat detection...")
         self._run_command(beat_detection_cmd)
 
+        print("    > Analyzing beats to generate tempo structure...")
         beat_analyzer = BeatAnalyzer()
         tempo_data = beat_analyzer.analyze(self.work_dir / "beat_pred.json")
         BeatAnalyzer.save_tempo_data(tempo_data, self.work_dir / "tempo.json")
 
-
-        print("\n[STAGE 3] Decoding with target attributes to generate piano cover...")
-
+    def _run_stage3_decode(self, target_attributes: dict, final_filename: str):
+        """Runs the final music generation based on the intermediate files."""
+        print("\n[STAGE 3] Decoding with target attributes to generate piano cover.")
         dec_cfg = self.config['decoder']
         model = load_etude_decoder(dec_cfg['config_path'], dec_cfg['model_path'], self.device)
         vocab = Vocab.load(dec_cfg['vocab_path'])
-        tokenizer = MidiTokenizer(tempo_path=self.work_dir / "tempo.json")
+        tokenizer = TinyREMITokenizer(tempo_path=self.work_dir / "tempo.json")
 
         condition_events = tokenizer.encode(str(self.work_dir / "extract.json"))
         condition_ids = vocab.encode_sequence(condition_events)
@@ -134,34 +119,56 @@ class InferencePipeline:
         num_bars = len(all_x_bars)
         target_attributes_per_bar = [target_attributes] * num_bars
         
+        print(f"    > Generating {num_bars} bars of music.")
         generated_events = model.generate(
-            vocab=vocab,
-            all_x_bars=all_x_bars,
+            vocab=vocab, all_x_bars=all_x_bars,
             target_attributes_per_bar=target_attributes_per_bar,
             temperature=dec_cfg['temperature'], top_p=dec_cfg['top_p']
         )
         
         if generated_events:
+            print("    > Decoding generated events into final MIDI.")
             final_notes = tokenizer.decode_to_notes(
                 events=generated_events, 
                 volume_map_path=self.work_dir / "volume.json"
             )
-
             final_midi_path = self.output_dir / f"{final_filename}.mid"
             tokenizer.note_to_midi(final_notes, final_midi_path)
-
-            print(f"    > Final MIDI saved to: {final_midi_path.resolve()}")
+            print(f"[INFO] Final MIDI saved to: {final_midi_path.resolve()}")
         else:
-            print("    > [Warning] Model generated an empty sequence.")
+            print("[WARN] Model generated an empty sequence.")
 
-        print("\n[SUCCESS] Inference pipeline finished successfully!")
+    def run(self, audio_source: str, target_attributes: dict, final_filename: str, decode_only: bool = False):
+        """Executes the inference pipeline, conditionally skipping preprocessing."""
+        if not decode_only:
+            # --- Full pipeline ---
+            audio_path = self._prepare_audio(audio_source)
+            self._run_stage1_extract(audio_path)
+            self._run_stage2_structuralize(audio_path)
+        else:
+            # --- Decode-only shortcut ---
+            print("[INFO] Skipping Stages 1 & 2.")
+            required_files = ["extract.json", "tempo.json", "volume.json"]
+            for f_name in required_files:
+                if not (self.work_dir / f_name).exists():
+                    print(f"[ERROR] Decode-only mode failed: Missing required file '{f_name}' in {self.work_dir}", file=sys.stderr)
+                    print("        Please run the full pipeline once without the flag to generate these files.", file=sys.stderr)
+                    sys.exit(1)
+            print("[INFO] All required intermediate files found.")
+        
+        # The decode stage runs in both cases
+        self._run_stage3_decode(target_attributes, final_filename)
+        print("\n[INFO] Inference pipeline finished successfully!")
 
 
 def main():
     parser = argparse.ArgumentParser(description="End-to-end piano cover generation pipeline.")
-    parser.add_argument("audio_source", type=str, help="Path or URL to the source audio file.")
     parser.add_argument("--config", type=str, default="configs/inference_config.yaml", help="Path to the main inference config file.")
     parser.add_argument("--output_name", type=str, default="output", help="Base name for the final output MIDI file (without extension).")
+
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--input", type=str, help="Path or URL to the source audio file for a full run.")
+    source_group.add_argument("--decode-only", action="store_true", help="Skip preprocessing and run decode stage only, using files in 'outputs/inference/temp'.")
     
     attr_group = parser.add_argument_group('Target Attribute Controls')
     attr_group.add_argument("--polyphony", type=int, default=1, choices=[0, 1, 2], help="Target bin for Relative Polyphony.")
@@ -187,7 +194,12 @@ def main():
     }
         
     pipeline = InferencePipeline(config)
-    pipeline.run(args.audio_source, target_attributes, args.output_name)
+    pipeline.run(
+        audio_source=args.input, 
+        target_attributes=target_attributes, 
+        final_filename=args.output_name,
+        decode_only=args.decode_only
+    )
 
 if __name__ == "__main__":
     main()

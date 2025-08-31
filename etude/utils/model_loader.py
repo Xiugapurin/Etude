@@ -19,14 +19,14 @@ def load_etude_decoder(
     if device == 'auto':
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    print(f"           > Loading model configuration from: {config_path}")
+    print(f"    > Loading model configuration from: {config_path}")
     config = EtudeDecoderConfig.from_json_file(str(config_path))
     
     model = EtudeDecoder(config)
-    print(f"           > Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
+    print(f"    > Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
     
     if checkpoint_path:
-        print(f"           > Loading checkpoint from: {checkpoint_path}")
+        print(f"    > Loading checkpoint from: {checkpoint_path}")
         state_dict = torch.load(checkpoint_path, map_location=device)
         
         # Extract the model's state dict if it's in a payload
@@ -40,7 +40,7 @@ def load_etude_decoder(
         
         # Load with strict=True to ensure a perfect match
         model.load_state_dict(cleaned_state_dict, strict=True)
-        print("           > Checkpoint loaded successfully (Strict Mode).")
+        print("    > Checkpoint loaded successfully.")
             
     model.to(device)
     model.eval()

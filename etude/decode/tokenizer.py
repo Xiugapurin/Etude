@@ -1,11 +1,11 @@
-# src/etude/data/tokenizer.py
+# etude/data/tokenizer.py
 
 import sys
 import copy
 import json
 from pathlib import Path
 from collections import defaultdict
-from typing import List, Dict, Union, Optional, Tuple
+from typing import Union, Optional
 
 import numpy as np
 import pretty_midi
@@ -22,7 +22,7 @@ ALLOWED_DURATION = [0.0, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1.0, 1.5, 2.0, 3.0, 4.0]
 ALLOWED_DURATIONS_IN_16THS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
 
 
-class MidiTokenizer:
+class TinyREMITokenizer:
     def __init__(self, tempo_path: str):
         """
         Initializes the tokenizer.
@@ -93,14 +93,11 @@ class MidiTokenizer:
             if not notes_to_keep[i]:
                 continue
             
-            # The potential grace note
             grace_candidate = notes[i]
             
-            # Look for a main note immediately after
             for j in range(i + 1, len(notes)):
                 main_candidate = notes[j]
 
-                # If the time difference is too large, stop searching for this grace_candidate
                 onset_diff = main_candidate['onset'] - grace_candidate['onset']
                 if onset_diff >= 0.1:
                     break
@@ -109,16 +106,11 @@ class MidiTokenizer:
                 pitch_diff = main_candidate['pitch'] - grace_candidate['pitch']
                 
                 if 1e-6 < onset_diff < 0.1 and abs(pitch_diff) == 1:
-                    # Found a grace note!
-                    # Add grace_info to the main note. Value is 1 or -1.
-                    # grace_info = -pitch_diff doesn't work. It should be based on which is higher.
                     grace_value = 1 if grace_candidate['pitch'] > main_candidate['pitch'] else -1
                     main_candidate['grace_info'] = grace_value
 
                     # Mark the grace note for removal
                     notes_to_keep[i] = False
-                    
-                    # A grace note can only be attached to one main note, so break the inner loop
                     break
 
         # Create the final list of notes
@@ -479,8 +471,6 @@ class MidiTokenizer:
 
                     if events[e_idx].type_ == "Pos":
                         pos_idx = events[e_idx].value
-                        # b_idx, b_rel_idx = divmod(pos_idx, 8)
-                        # b_rel_pos = IDX_2_POS[b_rel_idx]
                         b_idx, b_rel_pos = self._parse_pos_idx(pos_idx)
                         onset = m_start + (b_idx + b_rel_pos) * m_b_duration
                         e_idx += 1
@@ -736,9 +726,9 @@ class MidiTokenizer:
             try:
                 with open(volume_map_path, 'r') as f:
                     volume_contour = np.array(json.load(f))
-                print(f"Successfully loaded volume map from {volume_map_path}")
+                print(f"[INFO] Successfully loaded volume map from {volume_map_path}")
             except Exception as e:
-                print(f"Warning: Could not load or parse volume map at {volume_map_path}. Error: {e}")
+                print(f"[ERROR] Could not load or parse volume map at {volume_map_path}. Error: {e}")
         
         raw_decoded_notes = []
         event_idx, measure_idx, current_onset_sec, pending_grace_value = 0, 0, 0.0, None
@@ -797,7 +787,7 @@ class MidiTokenizer:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         midi = pretty_midi.PrettyMIDI()
-        instrument = pretty_midi.Instrument(program=0) # 0: Acoustic Grand Piano
+        instrument = pretty_midi.Instrument(program=0)
 
         for note_data in note_list:
             instrument.notes.append(

@@ -45,13 +45,13 @@ class BeatAnalyzer:
         self.downbeat_pred = data.get('downbeat_pred', [])
 
         if not self.downbeat_pred:
-            print("Warning: No downbeats found in the file. Cannot perform analysis.")
+            print("[WARN] No downbeats found in the file. Cannot perform analysis.")
             return []
 
         filtered_beats = self._remove_close_beats()
         measures = self._compute_measures(filtered_beats)
         if not measures:
-            print("Warning: Could not compute any valid measures.")
+            print("[WARN] Could not compute any valid measures.")
             return []
 
         global_time_sig = self._compute_global_time_sig(measures)
@@ -79,7 +79,7 @@ class BeatAnalyzer:
                 })
         
         if not processed_regions:
-            print("Warning: No stable tempo regions were detected.")
+            print("[WARN] No stable tempo regions were detected.")
             return []
 
         final_regions = self._patch_region_gaps(processed_regions)
@@ -188,10 +188,6 @@ class BeatAnalyzer:
         if len(processed_regions) < 2:
             return processed_regions
 
-        # This method's internal logic is complex and domain-specific, focusing on
-        # identifying if gaps between regions correspond to an integer or half-integer
-        # number of measures, then inserting new "patched" regions.
-        # The implementation from the original file is preserved here.
         patched_regions = []
         current_region = processed_regions[0]
         for i in range(len(processed_regions) - 1):

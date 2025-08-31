@@ -54,7 +54,7 @@ class BeatDetector:
             min_bpm=self.config['min_bpm'], max_bpm=self.config['max_bpm'], 
             fps=fps, threshold=self.config['threshold']
         )
-        print(f"           > BeatDetector initialized on device: {self.device}")
+        print(f"    > BeatDetector initialized on device: {self.device}")
 
     def _load_model(self, model_path: str) -> nn.Module:
         """Loads the pre-trained beat detection model."""
@@ -84,7 +84,7 @@ class BeatDetector:
         output_file = Path(output_json_path)
         
         try:
-            print(f"           > Loading features from: {input_file.name}")
+            print(f"    > Loading features from: {input_file.name}")
             features = np.load(input_file)
 
             with torch.no_grad():
@@ -114,14 +114,14 @@ class BeatDetector:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             with open(output_file, 'w') as f:
                 json.dump(results, f, indent=4)
-            print(f"           > Beat detection successful. Results saved to: {output_file.name}")
+            print(f"    > Beat detection successful. Results saved to: {output_file.name}")
             
             # Important side-effect: remove the input npy file after processing
             input_file.unlink()
-            print(f"           > Removed temporary file: {input_file.name}")
+            print(f"    > Removed temporary file: {input_file.name}")
 
         except Exception as e:
-            print(f"  ❌ An unexpected error occurred during beat detection: {e}", file=sys.stderr)
+            print(f"[ERROR] An unexpected error occurred during beat detection: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             sys.exit(1)
 
@@ -137,7 +137,7 @@ def main():
     parser.add_argument("--config_path", default="configs/structuralize_config.yaml", help="Path to the configuration YAML file.")
     args = parser.parse_args()
 
-    print("--- Starting Beat Detection (Structuralize Stage) ---")
+    print("    > Starting Beat Detection")
     
     with open(args.config_path, 'r') as f:
         config = yaml.safe_load(f)['beat_detection']
@@ -145,7 +145,7 @@ def main():
     detector = BeatDetector(config=config, model_path=args.model_path)
     detector.detect(input_npy_path=args.input_npy, output_json_path=args.output_json)
 
-    print("--- Beat Detection Script Finished Successfully ---")
+    print("    > Beat Detection Finished Successfully")
     sys.exit(0)
 
 

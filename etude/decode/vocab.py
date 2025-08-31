@@ -1,4 +1,4 @@
-# src/etude/data/vocab.py
+# etude/data/vocab.py
 
 import json
 from pathlib import Path
@@ -57,7 +57,7 @@ class Vocab:
         for token in self.special_tokens:
             self._add_token(token)
 
-        print(f"Initialized Vocab with special tokens: {self.special_tokens}")
+        print(f"[INFO] Initialized Vocab with special tokens: {self.special_tokens}")
 
     def _add_token(self, token: str) -> int:
         """Adds a token to the vocabulary if it doesn't already exist."""
@@ -157,7 +157,7 @@ class Vocab:
         """Loads the vocabulary from a JSON file."""
         filepath = Path(filepath)
         if not filepath.exists():
-            raise FileNotFoundError(f"Vocabulary file not found: {filepath}")
+            raise FileNotFoundError(f"[ERROR] Vocabulary file not found: {filepath}")
 
         with open(filepath, 'r', encoding='utf-8') as f:
             vocab_data = json.load(f)
@@ -169,7 +169,7 @@ class Vocab:
         for token, token_id in instance.token_to_id.items():
              instance.id_to_token[token_id] = token
 
-        print(f"Vocabulary loaded from {filepath}. Size: {len(instance)}")
+        print(f"[INFO] Vocabulary loaded from {filepath}. Size: {len(instance)}")
         return instance
 
     def __len__(self) -> int:

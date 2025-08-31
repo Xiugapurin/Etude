@@ -9,7 +9,7 @@ import traceback
 import yaml
 from tqdm import tqdm
 
-from etude.decode.tokenizer import MidiTokenizer
+from etude.decode.tokenizer import TinyREMITokenizer
 from etude.decode.vocab import Vocab, PAD_TOKEN
 from etude.data.dataset import EtudeDataset
 
@@ -24,13 +24,13 @@ def _tokenize_and_build_vocab(base_dir: Path, vocab_path: Path) -> tuple:
     processed_dirs = []
 
     if not base_dir.exists():
-        print(f"  [ERROR] Base data directory not found: {base_dir.resolve()}", file=sys.stderr)
+        print(f"[ERROR] Base data directory not found: {base_dir.resolve()}", file=sys.stderr)
         sys.exit(1)
 
     original_subdirs = sorted([d for d in base_dir.iterdir() if d.is_dir()])
-    print(f"           > Found {len(original_subdirs)} potential subdirectories.")
+    print(f"    > Found {len(original_subdirs)} potential subdirectories.")
     
-    for original_dir in tqdm(original_subdirs, desc="           > Tokenizing"):
+    for original_dir in tqdm(original_subdirs, desc="    > Tokenizing"):
         tempo_file = original_dir / "tempo.json"
         cond_file = original_dir / "extract.json"
         tgt_file = original_dir / "cover.json"
@@ -39,9 +39,9 @@ def _tokenize_and_build_vocab(base_dir: Path, vocab_path: Path) -> tuple:
             continue
         
         try:
-            cond_tokenizer = MidiTokenizer(str(tempo_file))
+            cond_tokenizer = TinyREMITokenizer(str(tempo_file))
             cond_events = cond_tokenizer.encode(str(cond_file), with_grace_note=False)
-            tgt_tokenizer = MidiTokenizer(str(tempo_file))
+            tgt_tokenizer = TinyREMITokenizer(str(tempo_file))
             tgt_events = tgt_tokenizer.encode(str(tgt_file), with_grace_note=True)
             
             if cond_events and tgt_events:
@@ -49,17 +49,17 @@ def _tokenize_and_build_vocab(base_dir: Path, vocab_path: Path) -> tuple:
                 all_tgt_events.append(tgt_events)
                 processed_dirs.append(original_dir.name)
         except Exception as e:
-            print(f"  [WARN]  Error processing {original_dir.name}: {e}", file=sys.stderr)
+            print(f"[ERROR] Error processing {original_dir.name}: {e}", file=sys.stderr)
 
     if not processed_dirs:
-        print("  [ERROR] No data was successfully tokenized. Exiting.", file=sys.stderr)
+        print("[ERROR] No data was successfully tokenized. Exiting.", file=sys.stderr)
         sys.exit(1)
     
     vocab = Vocab(special_tokens=[PAD_TOKEN])
     vocab.build_from_events(all_cond_events + all_tgt_events)
     vocab.save(vocab_path)
     
-    print(f"[ DONE  ] Step 1 completed. Processed {len(processed_dirs)} directories and found {len(vocab)} unique tokens.")
+    print(f"[INFO] Step 1 completed. Processed {len(processed_dirs)} directories and found {len(vocab)} unique tokens.")
     
     return all_cond_events, all_tgt_events, processed_dirs
 
@@ -75,9 +75,9 @@ def _encode_and_save_sequences(
     Encodes all event sequences using the vocabulary and saves them
     to the output directory.
     """
-    print(f"\n[STEP 2/3] Encoding {len(processed_dir_names)} sequences and saving to disk...")
+    print(f"\n[STEP 2/3] Encoding {len(processed_dir_names)} sequences and saving to disk.")
     num_saved = 0
-    for i, dir_name in enumerate(tqdm(processed_dir_names, desc="           > Encoding")):
+    for i, dir_name in enumerate(tqdm(processed_dir_names, desc="    > Encoding")):
         basename = f"{i+1:04d}"
         output_subdir = output_dir / basename
         output_subdir.mkdir(parents=True, exist_ok=True)
@@ -90,9 +90,9 @@ def _encode_and_save_sequences(
             vocab.encode_and_save_sequence(tgt_events_list[i], tgt_output_path, format=save_format)
             num_saved += 1
         except Exception as e:
-            print(f"  [WARN]  Error encoding/saving for {dir_name}: {e}", file=sys.stderr)
+            print(f"[ERROR] Error encoding/saving for {dir_name}: {e}", file=sys.stderr)
             
-    print(f"[ DONE  ] Step 2 completed. Saved {num_saved} tokenized pairs.")
+    print(f"[INFO] Step 2 completed. Saved {num_saved} tokenized pairs.")
     return num_saved
 
 def _validate_dataset_and_print_stats(output_dir: Path, vocab: Vocab, config: dict):
@@ -114,13 +114,13 @@ def _validate_dataset_and_print_stats(output_dir: Path, vocab: Vocab, config: di
         )
         
         if len(dataset) == 0:
-            print("\n  [WARN]  Dataset validation finished, but the dataset contains zero valid samples.")
+            print("\n[WARN] Dataset validation finished, but the dataset contains zero valid samples.")
 
     except Exception as e:
-        print(f"  [ERROR] Error during dataset validation: {e}", file=sys.stderr)
+        print(f"[ERROR] Error during dataset validation: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
     
-    print("[ DONE  ] Step 3 completed.")
+    print("[INFO] Step 3 completed.")
 
 
 def main():
@@ -142,10 +142,10 @@ def main():
     vocab_path = output_dir / config['vocab_filename']
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    print("[START] Commencing dataset preparation pipeline.")
-    print(f"        - Input data directory:  {base_data_dir.resolve()}")
-    print(f"        - Output data directory: {output_dir.resolve()}")
-    print(f"        - Vocabulary path:       {vocab_path.resolve()}\n")
+    print("[INFO] Commencing dataset preparation pipeline.")
+    print(f"    - Input data directory:  {base_data_dir.resolve()}")
+    print(f"    - Output data directory: {output_dir.resolve()}")
+    print(f"    - Vocabulary path:       {vocab_path.resolve()}\n")
 
     # --- Execute Pipeline ---
     cond_events, tgt_events, dir_names = _tokenize_and_build_vocab(base_data_dir, vocab_path)
@@ -155,7 +155,7 @@ def main():
     try:
         vocab = Vocab.load(vocab_path)
     except Exception as e:
-        print(f"  [FATAL] Could not reload vocab for encoding: {e}", file=sys.stderr)
+        print(f"  [ERROR] Could not reload vocab for encoding: {e}.", file=sys.stderr)
         sys.exit(1)
         
     num_saved = _encode_and_save_sequences(
@@ -170,8 +170,8 @@ def main():
     else:
         print("\n[WARN] No sequences were saved. Skipping dataset validation.")
     
-    print("\n[SUCCESS] Dataset preparation finished.")
-    print(f"          - Final dataset is ready in: {output_dir.resolve()}")
+    print("\n[INFO] Dataset preparation finished.")
+    print(f"    - Final dataset is ready in: {output_dir.resolve()}.")
 
 if __name__ == "__main__":
     main()
