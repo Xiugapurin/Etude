@@ -15,7 +15,7 @@ preprocessing:
 # --- Stage 1: Extract (Audio -> Notes) ---
 # See configs/extract_config.yaml for model architecture details.
 extractor:
-  model_path: "checkpoints/extractor/9.pth"
+  model_path: "checkpoints/extractor/latest.pth"
   config_path: "configs/extract_config.yaml"
 
 # --- Stage 2: Structuralize (Notes -> Tempo Structure) ---
