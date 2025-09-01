@@ -1,0 +1,20 @@
+# Unified configuration for the entire dataset preparation pipeline.
+
+# --- Stage 1: Download ---
+download:
+  csv_path: "assets/training_dataset.csv"
+  output_dir: "dataset/raw"
+
+# --- Stage 2: Align & Process ---
+processing:
+  output_dir: "dataset/synced"
+
+# --- Stage 3: Filter ---
+filtering:
+  min_wpd_score: 0.5
+
+# --- Stage 4: Tokenize ---
+tokenization:
+  output_dir: "dataset/tokenized"
+  vocab_filename: "vocab.json"
+  save_format: "npy"

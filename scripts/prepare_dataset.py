@@ -1,177 +1,231 @@
 # scripts/prepare_dataset.py
 
 import argparse
-import gc
 import sys
 from pathlib import Path
-import traceback
+import subprocess
 
+import pandas as pd
 import yaml
+import json
 from tqdm import tqdm
 
-from etude.decode.tokenizer import TinyREMITokenizer
-from etude.decode.vocab import Vocab, PAD_TOKEN
-from etude.data.dataset import EtudeDataset
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
 
+# Import all necessary utilities from our library
+from etude.utils.download import download_audio_from_url
+from etude.transcription.hft_transformer import HFT_Transcriber
+from etude.structuralize.beat_analyzer import BeatAnalyzer
+# from etude.structuralize.aligner import AudioAligner # For Stage 2
+# from etude.structuralize.tokenizer import MidiTokenizer # For Stage 4
 
-def _tokenize_and_build_vocab(base_dir: Path, vocab_path: Path) -> tuple:
+def run_stage_1_download(config: dict):
     """
-    Scans subdirectories, tokenizes MIDI data into Event sequences,
-    and builds a vocabulary from all events.
+    Handles Stage 1: Downloading all raw audio files from the source CSV.
     """
-    print(f"[STEP 1/3] Tokenizing source files and building vocabulary...")
-    all_cond_events, all_tgt_events = [], []
-    processed_dirs = []
+    print("\n" + "="*25 + " Stage 1: Downloading Raw Audio " + "="*25)
+    
+    stage_config = config['download']
+    csv_path = Path(stage_config['csv_path'])
+    output_dir = Path(stage_config['output_dir'])
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    if not base_dir.exists():
-        print(f"[ERROR] Base data directory not found: {base_dir.resolve()}", file=sys.stderr)
+    if not csv_path.exists():
+        print(f"[ERROR] Input CSV file not found at: {csv_path}")
         sys.exit(1)
 
-    original_subdirs = sorted([d for d in base_dir.iterdir() if d.is_dir()])
-    print(f"    > Found {len(original_subdirs)} potential subdirectories.")
-    
-    for original_dir in tqdm(original_subdirs, desc="    > Tokenizing"):
-        tempo_file = original_dir / "tempo.json"
-        cond_file = original_dir / "extract.json"
-        tgt_file = original_dir / "cover.json"
-        
-        if not (tempo_file.exists() and cond_file.exists() and tgt_file.exists()):
-            continue
-        
-        try:
-            cond_tokenizer = TinyREMITokenizer(str(tempo_file))
-            cond_events = cond_tokenizer.encode(str(cond_file), with_grace_note=False)
-            tgt_tokenizer = TinyREMITokenizer(str(tempo_file))
-            tgt_events = tgt_tokenizer.encode(str(tgt_file), with_grace_note=True)
-            
-            if cond_events and tgt_events:
-                all_cond_events.append(cond_events)
-                all_tgt_events.append(tgt_events)
-                processed_dirs.append(original_dir.name)
-        except Exception as e:
-            print(f"[ERROR] Error processing {original_dir.name}: {e}", file=sys.stderr)
-
-    if not processed_dirs:
-        print("[ERROR] No data was successfully tokenized. Exiting.", file=sys.stderr)
-        sys.exit(1)
-    
-    vocab = Vocab(special_tokens=[PAD_TOKEN])
-    vocab.build_from_events(all_cond_events + all_tgt_events)
-    vocab.save(vocab_path)
-    
-    print(f"[INFO] Step 1 completed. Processed {len(processed_dirs)} directories and found {len(vocab)} unique tokens.")
-    
-    return all_cond_events, all_tgt_events, processed_dirs
-
-def _encode_and_save_sequences(
-    vocab: Vocab,
-    cond_events_list: list,
-    tgt_events_list: list,
-    processed_dir_names: list,
-    output_dir: Path,
-    save_format: str
-) -> int:
-    """
-    Encodes all event sequences using the vocabulary and saves them
-    to the output directory.
-    """
-    print(f"\n[STEP 2/3] Encoding {len(processed_dir_names)} sequences and saving to disk.")
-    num_saved = 0
-    for i, dir_name in enumerate(tqdm(processed_dir_names, desc="    > Encoding")):
-        basename = f"{i+1:04d}"
-        output_subdir = output_dir / basename
-        output_subdir.mkdir(parents=True, exist_ok=True)
-        
-        cond_output_path = output_subdir / f"{basename}_cond.{save_format}"
-        tgt_output_path = output_subdir / f"{basename}_tgt.{save_format}"
-        
-        try:
-            vocab.encode_and_save_sequence(cond_events_list[i], cond_output_path, format=save_format)
-            vocab.encode_and_save_sequence(tgt_events_list[i], tgt_output_path, format=save_format)
-            num_saved += 1
-        except Exception as e:
-            print(f"[ERROR] Error encoding/saving for {dir_name}: {e}", file=sys.stderr)
-            
-    print(f"[INFO] Step 2 completed. Saved {num_saved} tokenized pairs.")
-    return num_saved
-
-def _validate_dataset_and_print_stats(output_dir: Path, vocab: Vocab, config: dict):
-    """
-    Initializes the EtudeDataset on the newly created data
-    to validate it and print detailed statistics.
-    """
-    print(f"\n[STEP 3/3] Validating final dataset and calculating statistics...")
     try:
-        save_format = config['save_format']
-        dataset = EtudeDataset(
-            dataset_dir=output_dir,
-            vocab=vocab,
-            max_seq_len=config['max_seq_len_for_stats'],
-            cond_suffix=f'_cond.{save_format}',
-            tgt_suffix=f'_tgt.{save_format}',
-            data_format=save_format,
-            verbose_stats=True  # Ensure the detailed stats are printed
-        )
-        
-        if len(dataset) == 0:
-            print("\n[WARN] Dataset validation finished, but the dataset contains zero valid samples.")
-
+        df = pd.read_csv(csv_path)
+        print(f"[INFO] Loaded '{csv_path.name}'. Found {len(df)} song pairs to process.")
     except Exception as e:
-        print(f"[ERROR] Error during dataset validation: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        print(f"[ERROR] Failed to read or parse CSV file: {e}")
+        sys.exit(1)
+
+    for index, row in tqdm(df.iterrows(), total=len(df), desc="[Stage 1] Downloading"):
+        song_index = index + 1
+        piano_id, pop_id = row['piano_ids'], row['pop_ids']
+
+        song_dir = output_dir / f"{song_index:04d}"
+        song_dir.mkdir(exist_ok=True)
+
+        cover_output_path = song_dir / "cover.wav"
+        origin_output_path = song_dir / "origin.wav"
+        
+        if not cover_output_path.exists():
+            piano_url = f"https://www.youtube.com/watch?v={piano_id}"
+            download_audio_from_url(piano_url, cover_output_path)
+        
+        if not origin_output_path.exists():
+            pop_url = f"https://www.youtube.com/watch?v={pop_id}"
+            download_audio_from_url(pop_url, origin_output_path)
     
-    print("[INFO] Step 3 completed.")
+    print("✅ Stage 1: Download complete.")
+
+
+def run_stage_2_transcript_and_beat_detect(config: dict):
+    """
+    Handles Stage 2: Processes raw audio to generate beat/tempo information (for origin)
+    and transcription notes (for cover).
+    """
+    print("\n" + "="*25 + " Stage 2: Transcription & Beat Detection " + "="*25)
+    
+    raw_dir = Path(config['download']['output_dir'])
+    processed_dir = Path(config['processing']['output_dir'])
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    with open("configs/structuralize_config.yaml", 'r') as f:
+        struct_config = yaml.safe_load(f)
+
+    with open("configs/transcription_config.yaml", 'r') as f:
+        hft_config = yaml.safe_load(f)
+    
+    with open(hft_config['feature_config_path'], 'r') as f:
+        hft_feature_config = json.load(f)
+    
+    transcriber = HFT_Transcriber(
+        config=hft_feature_config,
+        model_path=hft_config['model_path']
+    )
+
+    song_dirs = sorted([d for d in raw_dir.iterdir() if d.is_dir()])
+
+    for song_dir in tqdm(song_dirs, desc="[Stage 2] Processing Songs"):
+        song_name = song_dir.name
+        output_song_dir = processed_dir / song_name
+        output_song_dir.mkdir(exist_ok=True)
+        
+        # --- Transcription (for cover.wav) ---
+        cover_wav = song_dir / "cover.wav"
+        transcription_json = output_song_dir / "transcription.json"
+
+        if transcription_json.exists():
+            tqdm.write(f"[SKIP] Transcription for {song_name}: transcription.json already exists.")
+        elif not cover_wav.exists():
+            tqdm.write(f"[WARN] Skipping transcription for {song_name}: cover.wav not found.")
+        else:
+            tqdm.write(f"\n  > Transcribing cover for {song_name}...")
+            transcriber.transcribe(
+                input_wav_path=cover_wav,
+                output_json_path=transcription_json,
+                inference_params=hft_config['inference_params']
+            )
+
+        # --- Beat Detection (for origin.wav) ---
+        origin_wav = song_dir / "origin.wav"
+        sep_npy_path = output_song_dir / "sep.npy"
+        beat_pred_path = output_song_dir / "beat_pred.json"
+        tempo_path = output_song_dir / "tempo.json"
+
+        if tempo_path.exists():
+            tqdm.write(f"[SKIP] Beat/Tempo for {song_name}: tempo.json already exists.")
+        elif not origin_wav.exists():
+            tqdm.write(f"[WARN] Skipping beat/tempo for {song_name}: origin.wav not found.")
+        else:
+            tqdm.write(f"\n    > Processing beats for {song_name}...")
+            
+            spleeter_cmd = [
+                "conda", "run", "-n", struct_config['spleeter_env_name'],
+                "python", "scripts/run_separation.py",
+                "--input", str(origin_wav), "--output", str(sep_npy_path)
+            ]
+            subprocess.run(spleeter_cmd, check=True, capture_output=True)
+
+            beat_detection_cmd = [
+                "conda", "run", "-n", struct_config['madmom_env_name'],
+                "python", "scripts/run_beat_detection.py",
+                "--input_npy", str(sep_npy_path),
+                "--output_json", str(beat_pred_path),
+                "--model_path", struct_config['beat_model_path'],
+                "--config_path", "configs/structuralize_config.yaml"
+            ]
+            subprocess.run(beat_detection_cmd, check=True, capture_output=True)
+            
+            beat_analyzer = BeatAnalyzer()
+            tempo_data = beat_analyzer.analyze(beat_pred_path)
+            BeatAnalyzer.save_tempo_data(tempo_data, tempo_path)
+    
+    print("✅ Stage 2: Transcription & Beat Detection complete.")
+
+
+def run_stage_3_filter(config: dict):
+    """
+    Handles Stage 3: Filters the processed dataset based on quality metrics.
+    """
+    print("\n" + "="*25 + " Stage 3: Filtering Dataset " + "="*25)
+    
+    # TODO: Implement the logic for this stage.
+    # This function will iterate through `dataset/synced`.
+    # It will read metadata (e.g., from 'wp.json') and apply filtering rules
+    # (e.g., keep only songs with WPD score below a threshold).
+    # The output could be a new `metadata_filtered.json` file.
+
+    print("🚧 Stage 3: Not yet implemented.")
+    pass
+
+
+def run_stage_4_tokenize(config: dict):
+    """
+    Handles Stage 4: Tokenizes the filtered data and builds the final vocabulary.
+    """
+    print("\n" + "="*25 + " Stage 4: Tokenizing Final Dataset " + "="*25)
+    
+    # TODO: Implement the logic for this stage.
+    # This function is essentially the refactored version of the old 'prepare_dataset.py' script.
+    # It will:
+    # 1. Scan the 'filtered' or 'synced' directory.
+    # 2. Use MidiTokenizer to encode 'extract.json' and 'cover.json' for each song.
+    # 3. Build a global vocabulary from all events.
+    # 4. Save the vocabulary and the final encoded .npy files to `dataset/tokenized`.
+
+    print("🚧 Stage 4: Not yet implemented.")
+    pass
 
 
 def main():
+    """Main function to orchestrate the data preparation pipeline."""
     parser = argparse.ArgumentParser(
-        description="Prepare the dataset for the 'decode' stage. This script tokenizes, builds a vocabulary, encodes sequences, and validates the final dataset."
+        description="End-to-end data preparation pipeline for the Etude project."
     )
     parser.add_argument(
-        "--config", type=str, default="configs/dataset_config.yaml",
-        help="Path to the dataset configuration YAML file."
+        "--config", type=str, default="configs/data_prepare_config.yaml",
+        help="Path to the main data preparation configuration file."
+    )
+    # Add arguments to control which stages to run
+    parser.add_argument(
+        "--start-from", type=str, choices=['download', 'process', 'filter', 'tokenize'],
+        default='download', help="The stage to start the pipeline from."
+    )
+    parser.add_argument(
+        "--run-only", type=str, choices=['download', 'process', 'filter', 'tokenize'],
+        help="Run only a single specified stage."
     )
     args = parser.parse_args()
 
-    # --- Load Configuration ---
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
-    base_data_dir = Path(config['base_data_dir'])
-    output_dir = Path(config['output_dir'])
-    vocab_path = output_dir / config['vocab_filename']
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print("[INFO] Commencing dataset preparation pipeline.")
-    print(f"    - Input data directory:  {base_data_dir.resolve()}")
-    print(f"    - Output data directory: {output_dir.resolve()}")
-    print(f"    - Vocabulary path:       {vocab_path.resolve()}\n")
+    # --- Execute Pipeline Stages ---
+    pipeline_stages = ['download', 'process', 'filter', 'tokenize']
+    start_index = pipeline_stages.index(args.start_from)
 
-    # --- Execute Pipeline ---
-    cond_events, tgt_events, dir_names = _tokenize_and_build_vocab(base_data_dir, vocab_path)
-    
-    gc.collect() 
-    
-    try:
-        vocab = Vocab.load(vocab_path)
-    except Exception as e:
-        print(f"  [ERROR] Could not reload vocab for encoding: {e}.", file=sys.stderr)
-        sys.exit(1)
+    for i, stage in enumerate(pipeline_stages):
+        if i < start_index:
+            continue
         
-    num_saved = _encode_and_save_sequences(
-        vocab, cond_events, tgt_events, dir_names, output_dir, config['save_format']
-    )
-    
-    del cond_events, tgt_events, dir_names
-    gc.collect()
+        if args.run_only and args.run_only != stage:
+            continue
 
-    if num_saved > 0:
-        _validate_dataset_and_print_stats(output_dir, vocab, config)
-    else:
-        print("\n[WARN] No sequences were saved. Skipping dataset validation.")
-    
-    print("\n[INFO] Dataset preparation finished.")
-    print(f"    - Final dataset is ready in: {output_dir.resolve()}.")
+        if stage == 'download':
+            run_stage_1_download(config)
+        elif stage == 'process':
+            run_stage_2_transcript_and_beat_detect(config)
+        elif stage == 'filter':
+            run_stage_3_filter(config)
+        elif stage == 'tokenize':
+            run_stage_4_tokenize(config)
+
+    print("\n[INFO] Data preparation script finished.")
 
 if __name__ == "__main__":
     main()

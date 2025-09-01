@@ -41,10 +41,12 @@ def download_audio_from_url(url: str, output_path: Union[str, Path]) -> bool:
         }],
         "ignoreerrors": True,
         "overwrites": True,
+        "quiet": True,
+        "no_warnings": True, 
     }
 
     try:
-        print(f"    > Downloading from {url}...")
+        print(f"    > Downloading from {url}")
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
