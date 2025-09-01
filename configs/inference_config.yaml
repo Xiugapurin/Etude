@@ -29,7 +29,7 @@ structuralizer:
 decoder:
   model_path: "checkpoints/decoder/latest.pth"
   config_path: "checkpoints/decoder/etude_decoder_config.json"
-  vocab_path: "dataset/tokenized/vocab.json"
+  vocab_path: "assets/vocab.json"
 
   # Generation (sampling) parameters
   max_output_tokens: 25600

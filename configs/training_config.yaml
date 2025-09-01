@@ -3,13 +3,13 @@
 # --- Environment and Paths ---
 run_id: "etude_decoder_v1" # A specific name for this training run
 seed: 1234
-output_dir: "./outputs" # Base directory for all outputs (checkpoints, logs)
+output_dir: "outputs"
 
 data:
-  dataset_dir: "./dataset/tokenized/"
-  vocab_path: "./dataset/tokenized/vocab.json"
+  dataset_dir: "dataset/tokenized/"
+  vocab_path: "assets/vocab.json"
   data_format: "npy"
-  num_workers: 4 # Set to 0 for Windows
+  num_workers: 4
 
 # --- Model Architecture ---
 # This section directly configures the EtudeDecoderConfig
@@ -25,8 +25,7 @@ model:
   attribute_pad_id: 0
   context_num_past_xy_pairs: 4
 
-  # Musical attribute embedding parameters
-  num_attribute_bins: 3 # This will be used for all attribute dimensions below
+  num_attribute_bins: 3
   attribute_emb_dim: 64
 
 # --- Training Parameters ---
