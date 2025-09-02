@@ -26,7 +26,7 @@ class AudioAligner:
     interface for obtaining the warping path and handles caching of results.
     """
 
-    def __init__(self, fs: int = 22050, feature_rate: int = 50):
+    def __init__(self, fs: int = 22050, feature_rate: int = 50, verbose: bool = False):
         """
         Initializes the AudioAligner with configuration parameters.
 
@@ -36,6 +36,7 @@ class AudioAligner:
         """
         self.fs = fs
         self.feature_rate = feature_rate
+        self.verbose = verbose
         
         # --- Default parameters for MRMSDTW ---
         self.step_weights = np.array([1.5, 1.5, 2.0])
@@ -60,7 +61,8 @@ class AudioAligner:
             return cached_result
         
         # Step 2: Cache miss. Fallback to full alignment, which requires .wav files.
-        print(f"    > [INFO] No valid cache for '{version_key}'. Attempting alignment from .wav files.")
+        if self.verbose:
+            print(f"    > [INFO] No valid cache for '{version_key}'. Attempting alignment from .wav files.")
         
         if not Path(origin_audio_path).exists() or not Path(cover_audio_path).exists():
             return None 
@@ -94,16 +96,13 @@ class AudioAligner:
         return f_chroma_quantized, f_DLNCO
 
     def _compute_warping_path(self, origin_audio: np.ndarray, cover_audio: np.ndarray) -> Dict:
-        """The core private method for feature extraction and MRMSDTW alignment."""
-        # 1. Estimate tuning for both audio files
+        """The core private method for feature extraction and MrMsDTW alignment."""
         tuning_offset_cover = estimate_tuning(cover_audio, self.fs)
         tuning_offset_origin = estimate_tuning(origin_audio, self.fs)
         
-        # 2. Extract features
         f_chroma_cover, f_dlnco_cover = self._get_features(cover_audio, tuning_offset_cover)
         f_chroma_origin, f_dlnco_origin = self._get_features(origin_audio, tuning_offset_origin)
 
-        # 3. Compute optimal chroma shift to handle key differences
         f_cens_cover = quantized_chroma_to_CENS(f_chroma_cover, 201, 50, self.feature_rate)[0]
         f_cens_origin = quantized_chroma_to_CENS(f_chroma_origin, 201, 50, self.feature_rate)[0]
         opt_chroma_shift = compute_optimal_chroma_shift(f_cens_cover, f_cens_origin)
@@ -111,7 +110,6 @@ class AudioAligner:
         f_chroma_origin_shifted = shift_chroma_vectors(f_chroma_origin, opt_chroma_shift)
         f_dlnco_origin_shifted = shift_chroma_vectors(f_dlnco_origin, opt_chroma_shift)
         
-        # 4. Run the MRMSDTW algorithm
         wp = sync_via_mrmsdtw(
             f_chroma1=f_chroma_cover, f_onset1=f_dlnco_cover,
             f_chroma2=f_chroma_origin_shifted, f_onset2=f_dlnco_origin_shifted,
@@ -123,7 +121,6 @@ class AudioAligner:
         )
         wp = make_path_strictly_monotonic(wp)
 
-        # Calculate pitch shift in semitones
         pitch_shift = -opt_chroma_shift % 12
         if pitch_shift > 6:
             pitch_shift -= 12
@@ -172,4 +169,6 @@ class AudioAligner:
         
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump(all_data, f, indent=4)
-        print(f"           > Rich alignment data for '{version_key}' saved to cache: {cache_path}")
+        
+        if self.verbose:
+            print(f"    > Rich alignment data for '{version_key}' saved to cache: {cache_path}")

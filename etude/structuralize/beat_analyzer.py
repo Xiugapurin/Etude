@@ -98,14 +98,15 @@ class BeatAnalyzer:
         
         return final_output
 
-    @staticmethod
-    def save_tempo_data(tempo_data: List[Dict], output_path: Union[str, Path]):
+    def save_tempo_data(self, tempo_data: List[Dict], output_path: Union[str, Path]):
         """Saves the structured tempo data to a JSON file."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(tempo_data, f, indent=4)
-        print(f"Tempo data saved successfully to: {output_path}")
+
+        if self.verbose:
+            print(f"Tempo data saved successfully to: {output_path}")
 
     def _remove_close_beats(self, beat_threshold: float = 0.1) -> List[float]:
         """Filters out beat predictions that are too close to a downbeat."""

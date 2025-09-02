@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import torch
 
-from etude.extract.extractor import AMT_Extractor
+from etude.extract.extractor import AMTAPC_Extractor
 from etude.structuralize.beat_analyzer import BeatAnalyzer
 from etude.structuralize.audio_analyzer import analyze_volume, save_volume_map
 from etude.decode.tokenizer import TinyREMITokenizer
@@ -71,7 +71,7 @@ class InferencePipeline:
         with open(ext_cfg['config_path'], 'r') as f: 
             amt_config = yaml.safe_load(f)
         
-        extractor = AMT_Extractor(config=amt_config, model_path=ext_cfg['model_path'], device=self.device)
+        extractor = AMTAPC_Extractor(config=amt_config, model_path=ext_cfg['model_path'], device=self.device)
         extractor.extract(
             audio_path=str(audio_path),
             output_json_path=str(self.work_dir / "extract.json")

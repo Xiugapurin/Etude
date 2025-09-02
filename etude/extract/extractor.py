@@ -109,7 +109,7 @@ def _load_model(config: Dict, path_model: str, device: torch.device) -> _Spec2MI
     return model
 
 
-class AMT_Extractor:
+class AMTAPC_Extractor:
     """
     A pipeline for converting audio files into musical note representations (JSON/MIDI).
     """

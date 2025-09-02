@@ -1,6 +1,9 @@
-# etude/data/vocab.py
+# etude/decode/vocab.py
 
 import json
+import torch
+import numpy as np
+
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Union
@@ -42,7 +45,7 @@ class Vocab:
     This class handles vocabulary creation, saving, loading, and the encoding/decoding
     of individual tokens and sequences.
     """
-    def __init__(self, special_tokens: List[str] = [PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN]):
+    def __init__(self, special_tokens: List[str] = [PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN], verbose: bool = False):
         """
         Initializes the vocabulary.
         
@@ -53,11 +56,13 @@ class Vocab:
         self.token_to_id: Dict[str, int] = {}
         self.id_to_token: List[str] = []
         self.special_tokens = special_tokens
+        self.verbose = verbose
 
         for token in self.special_tokens:
             self._add_token(token)
-
-        print(f"[INFO] Initialized Vocab with special tokens: {self.special_tokens}")
+        
+        if self.verbose:
+            print(f"[INFO] Initialized Vocab with special tokens: {self.special_tokens}")
 
     def _add_token(self, token: str) -> int:
         """Adds a token to the vocabulary if it doesn't already exist."""
@@ -76,13 +81,15 @@ class Vocab:
         Args:
             event_sequences (List[List[Event]]): A list of event sequences to build the vocabulary from.
         """
-        print("Building vocabulary from event sequences...")
+        if self.verbose:
+            print("[INFO] Building vocabulary from event sequences.")
 
         for seq in event_sequences:
             for event in seq:
                 self._add_token(str(event))
 
-        print(f"Vocabulary built. Total unique tokens: {len(self)}")
+        if self.verbose:
+            print(f"    > Vocabulary built. Total unique tokens: {len(self)}")
 
     def encode(self, token: Union[str, Event]) -> int:
         """
@@ -95,8 +102,8 @@ class Vocab:
 
         token_id = self.token_to_id.get(token_str, unk_token_id)
 
+        # This case happens if a token is not in the vocab AND UNK_TOKEN was not defined.
         if token_id is None:
-            # This case happens if a token is not in the vocab AND UNK_TOKEN was not defined.
             raise ValueError(
                 f"Token '{token_str}' is not in the vocabulary, and no '{UNK_TOKEN}' is defined "
                 f"in the vocabulary to use as a fallback. Please ensure '{UNK_TOKEN}' is in the "
@@ -150,7 +157,38 @@ class Vocab:
         }
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(vocab_data, f, ensure_ascii=False, indent=2)
-        print(f"Vocabulary saved to {filepath}")
+        
+        if self.verbose:
+            print(f"Vocabulary saved to {filepath}")
+    
+    def encode_and_save_sequence(
+            self, 
+            sequence: List[Union[str, Event]], 
+            filepath: Union[str, Path], 
+            format: str = 'npy'
+        ):
+        """
+        Encodes a sequence and saves the resulting ID list to a file.
+
+        Args:
+            sequence (List[Union[str, Event]]): The sequence of tokens or Events.
+            filepath (Union[str, Path]): The path to save the encoded sequence.
+            format (str): The format to save in ('npy', 'pt', 'json').
+                          'npy' uses NumPy, 'pt' uses PyTorch tensors, 'json' uses JSON list.
+        """
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        id_sequence = self.encode_sequence(sequence)
+
+        if format == 'npy':
+            np.save(filepath, np.array(id_sequence, dtype=np.int32))
+        elif format == 'pt':
+            torch.save(torch.tensor(id_sequence, dtype=torch.long), filepath)
+        elif format == 'json':
+             with open(filepath, 'w') as f:
+                 json.dump(id_sequence, f)
+        else:
+            raise ValueError(f"Unsupported save format: {format}. Choose 'npy', 'pt', or 'json'.")
 
     @classmethod
     def load(cls, filepath: Union[str, Path]) -> 'Vocab':
@@ -164,12 +202,14 @@ class Vocab:
 
         instance = cls(special_tokens=vocab_data.get('special_tokens', [PAD_TOKEN]))
         instance.token_to_id = vocab_data['token_to_id']
+
         # Reconstruct id_to_token from the loaded mapping
         instance.id_to_token = [""] * len(instance.token_to_id)
         for token, token_id in instance.token_to_id.items():
              instance.id_to_token[token_id] = token
 
         print(f"[INFO] Vocabulary loaded from {filepath}. Size: {len(instance)}")
+
         return instance
 
     def __len__(self) -> int:

@@ -8,7 +8,7 @@ import argparse
 
 from yt_dlp import YoutubeDL
 
-def download_audio_from_url(url: str, output_path: Union[str, Path]) -> bool:
+def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bool = False) -> bool:
     """
     Downloads the best audio from a given URL, converts it to WAV,
     and saves it to the specified output path.
@@ -46,7 +46,8 @@ def download_audio_from_url(url: str, output_path: Union[str, Path]) -> bool:
     }
 
     try:
-        print(f"    > Downloading from {url}")
+        if verbose:
+            print(f"    > Downloading from {url}")
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
@@ -57,7 +58,8 @@ def download_audio_from_url(url: str, output_path: Union[str, Path]) -> bool:
     final_output_path = output_path
 
     if final_output_path.exists() and final_output_path.stat().st_size > 0:
-        print(f"    > Audio successfully saved to: {final_output_path}")
+        if verbose:
+            print(f"    > Audio successfully saved to: {final_output_path}")
         return True
     else:
         print(f"[ERROR] Download failed. Output file was not created or is empty.", file=sys.stderr)

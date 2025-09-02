@@ -2,19 +2,26 @@
 
 # --- Stage 1: Download ---
 download:
-  csv_path: "assets/training_dataset.csv"
-  output_dir: "dataset/raw"
+  csv_path: "asset/dataset.csv"
+  source_dir: "dataset/raw"
 
-# --- Stage 2: Align & Process ---
-processing:
-  output_dir: "dataset/synced"
+# --- Stage 2: Preprocess ---
+preprocess:
+  output_dir: "dataset/processed"
 
-# --- Stage 3: Filter ---
-filtering:
-  min_wpd_score: 0.5
+# --- Stage 3: Align & Filter ---
+align_and_filter:
+  output_dir: "dataset/aligned"
+  wp_std_threshold: 1.0
 
-# --- Stage 4: Tokenize ---
-tokenization:
+# --- Stage 4: Extract ---
+extract:
+  output_dir: "dataset/aligned"
+  model_path: "checkpoints/extractor/latest.pth"
+  config_path: "configs/extract_config.yaml"
+
+# --- Stage 5: Tokenize ---
+tokenize:
   output_dir: "dataset/tokenized"
-  vocab_filename: "vocab.json"
+  vocab_path: "./assets/vocab.json"
   save_format: "npy"

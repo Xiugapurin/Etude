@@ -12,7 +12,6 @@ import torch
 import torchaudio
 from tqdm import tqdm
 
-# from ..models.layers import model_spec2midi
 from ..models import amt_apc
 
 class CustomUnpickler(pickle.Unpickler):
@@ -28,7 +27,9 @@ class HFT_Transcriber:
     """
     A fully integrated transcriber based on the hFT-Transformer pipeline.
     """
-    def __init__(self, config: Dict, model_path: str, device: str = 'auto'):
+    def __init__(self, config: Dict, model_path: str, device: str = 'auto', verbose: bool = False):
+        self.verbose = verbose
+
         if device == 'auto':
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
@@ -36,7 +37,9 @@ class HFT_Transcriber:
 
         self.config = config
         
-        print(f"    > Loading hFT-Transformer model from: {model_path}")
+        if self.verbose:
+            print(f"    > Loading hFT-Transformer model from: {model_path}")
+
         with open(model_path, "rb") as f:
             self.model = CustomUnpickler(f).load()
         
@@ -59,7 +62,8 @@ class HFT_Transcriber:
         except AttributeError as e:
             print(f"    > [WARN] Could not perform manual device fix for sub-tensors: {e}")
 
-        print(f"    > hFT-Transformer model loaded successfully on device: {self.device}")
+        if self.verbose:
+            print(f"    > hFT-Transformer model loaded successfully on device: {self.device}")
 
     def transcribe(
         self,
@@ -104,8 +108,6 @@ class HFT_Transcriber:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(notes, f, ensure_ascii=False, indent=4)
-        
-        tqdm.write(f"    > Transcription complete. Saved to {output_path.name}")
 
 
     def _wav2feature(self, f_wav: Union[str, Path]) -> torch.Tensor:
