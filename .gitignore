@@ -32,7 +32,6 @@ env/
 .idea/
 *.egg*/
 
-data/
 dataset/
 dataset/eval
 .cache/

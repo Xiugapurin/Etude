@@ -121,9 +121,11 @@ class InferencePipeline:
         
         print(f"    > Generating {num_bars} bars of music.")
         generated_events = model.generate(
-            vocab=vocab, all_x_bars=all_x_bars,
+            vocab=vocab, 
+            all_x_bars=all_x_bars,
             target_attributes_per_bar=target_attributes_per_bar,
-            temperature=dec_cfg['temperature'], top_p=dec_cfg['top_p']
+            temperature=dec_cfg['temperature'], 
+            top_p=dec_cfg['top_p']
         )
         
         if generated_events:

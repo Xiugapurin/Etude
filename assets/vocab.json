@@ -126,8 +126,7 @@
     "Pos_52": 123,
     "Pos_58": 124,
     "Grace_1": 125,
-    "Grace_-1": 126,
-    "<UNK>": 127
+    "Grace_-1": 126
   },
-  "special_tokens": ["<PAD>", "<UNK>"]
+  "special_tokens": ["<PAD>"]
 }

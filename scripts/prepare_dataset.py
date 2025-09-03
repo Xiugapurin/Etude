@@ -78,7 +78,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     """
     print("\n" + "="*25 + " Stage 2: Preprocessing " + "="*25)
     
-    raw_dir = Path(config['download']['source_dir'])
+    raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
     processed_dir.mkdir(parents=True, exist_ok=True)
 
@@ -166,7 +166,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
     """
     print("\n" + "="*25 + " Stage 3: Align & Filter " + "="*25)
     
-    raw_dir = Path(config['download']['source_dir'])
+    raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
     synced_dir = Path(config['align_and_filter']['output_dir'])
     synced_dir.mkdir(parents=True, exist_ok=True)
@@ -249,7 +249,7 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
     print("\n" + "="*25 + " Stage 4: Extracting Condition Notes " + "="*25)
     
     stage_config = config['extract']
-    raw_dir = Path(config['download']['source_dir'])
+    raw_dir = Path(config['download']['output_dir'])
     output_base_dir = Path(config['align_and_filter']['output_dir'])
 
     metadata_path = output_base_dir / "metadata.json"

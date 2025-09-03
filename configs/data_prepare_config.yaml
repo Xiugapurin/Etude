@@ -2,8 +2,8 @@
 
 # --- Stage 1: Download ---
 download:
-  csv_path: "asset/dataset.csv"
-  source_dir: "dataset/raw"
+  output_dir: "dataset/raw"
+  csv_path: "assets/dataset.csv"
 
 # --- Stage 2: Preprocess ---
 preprocess:
@@ -23,5 +23,5 @@ extract:
 # --- Stage 5: Tokenize ---
 tokenize:
   output_dir: "dataset/tokenized"
-  vocab_path: "./assets/vocab.json"
+  vocab_path: "assets/vocab.json"
   save_format: "npy"

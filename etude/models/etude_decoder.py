@@ -19,10 +19,8 @@ from transformers import GPTNeoXConfig, GPTNeoXModel, PreTrainedModel, Pretraine
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from tqdm import tqdm
 
-from ..data.dataset import COND_CLASS_ID, TGT_CLASS_ID
+from ..data.dataset import SRC_CLASS_ID, TGT_CLASS_ID
 
-COND_CLASS_ID = 1
-TGT_CLASS_ID = 2
 
 class EtudeDecoderConfig(PretrainedConfig):
     """
@@ -48,24 +46,22 @@ class EtudeDecoderConfig(PretrainedConfig):
         attribute_pad_id: int = 0,
         context_num_past_xy_pairs: int = 4,
 
-        num_pitch_overlap_ratio_bins: int = 3,
-        pitch_overlap_ratio_emb_dim: int = 64,
-        num_relative_polyphony_bins: int = 3,
-        relative_polyphony_emb_dim: int = 64,
-        num_relative_note_sustain_bins: int = 3,
-        relative_note_sustain_emb_dim: int = 64,
-        num_relative_rhythmic_intensity_bins: int = 3,
-        relative_rhythmic_intensity_emb_dim: int = 64,
+        num_attribute_bins: int = 3,
+        attribute_emb_dim: int = 64,
         
-        rotary_pct: float = 0.25, 
         initializer_range: float = 0.02,
         **kwargs
     ):
         super().__init__(
-            vocab_size=vocab_size, pad_token_id=pad_token_id, hidden_size=hidden_size,
-            num_hidden_layers=num_hidden_layers, num_attention_heads=num_attention_heads,
-            intermediate_size=intermediate_size, max_position_embeddings=max_position_embeddings,
-            initializer_range=initializer_range, **kwargs
+            vocab_size=vocab_size, 
+            pad_token_id=pad_token_id, 
+            hidden_size=hidden_size,
+            num_hidden_layers=num_hidden_layers, 
+            num_attention_heads=num_attention_heads,
+            intermediate_size=intermediate_size, 
+            max_position_embeddings=max_position_embeddings,
+            initializer_range=initializer_range, 
+            **kwargs
         )
         
         # Store all parameters as instance attributes
@@ -73,14 +69,16 @@ class EtudeDecoderConfig(PretrainedConfig):
         self.pad_class_id = pad_class_id
         self.attribute_pad_id = attribute_pad_id
         self.context_num_past_xy_pairs = context_num_past_xy_pairs
-        self.num_pitch_overlap_ratio_bins = num_pitch_overlap_ratio_bins
-        self.pitch_overlap_ratio_emb_dim = pitch_overlap_ratio_emb_dim
-        self.num_relative_polyphony_bins = num_relative_polyphony_bins
-        self.relative_polyphony_emb_dim = relative_polyphony_emb_dim
-        self.num_relative_note_sustain_bins = num_relative_note_sustain_bins
-        self.relative_note_sustain_emb_dim = relative_note_sustain_emb_dim
-        self.num_relative_rhythmic_intensity_bins = num_relative_rhythmic_intensity_bins
-        self.relative_rhythmic_intensity_emb_dim = relative_rhythmic_intensity_emb_dim
+        self.num_attribute_bins = num_attribute_bins
+        self.attribute_emb_dim = attribute_emb_dim
+        self.num_pitch_overlap_ratio_bins = num_attribute_bins
+        self.pitch_overlap_ratio_emb_dim = attribute_emb_dim
+        self.num_relative_polyphony_bins = num_attribute_bins
+        self.relative_polyphony_emb_dim = attribute_emb_dim
+        self.num_relative_rhythmic_intensity_bins = num_attribute_bins
+        self.relative_rhythmic_intensity_emb_dim = attribute_emb_dim
+        self.num_relative_note_sustain_bins = num_attribute_bins
+        self.relative_note_sustain_emb_dim = attribute_emb_dim
 
 
 class EtudeDecoder(PreTrainedModel):
@@ -101,13 +99,17 @@ class EtudeDecoder(PreTrainedModel):
         self.class_embeddings = nn.Embedding(config.num_classes, config.hidden_size, padding_idx=config.pad_class_id)
 
         self.pitch_overlap_embeddings = nn.Embedding(
-            config.num_pitch_overlap_ratio_bins, config.pitch_overlap_ratio_emb_dim, padding_idx=config.attribute_pad_id)
+            config.num_pitch_overlap_ratio_bins, config.pitch_overlap_ratio_emb_dim, padding_idx=config.attribute_pad_id
+        )
         self.polyphony_embeddings = nn.Embedding(
-            config.num_relative_polyphony_bins, config.relative_polyphony_emb_dim, padding_idx=config.attribute_pad_id)
+            config.num_relative_polyphony_bins, config.relative_polyphony_emb_dim, padding_idx=config.attribute_pad_id
+        )
         self.note_sustain_embeddings = nn.Embedding(
-            config.num_relative_note_sustain_bins, config.relative_note_sustain_emb_dim, padding_idx=config.attribute_pad_id)
+            config.num_relative_note_sustain_bins, config.relative_note_sustain_emb_dim, padding_idx=config.attribute_pad_id
+        )
         self.rhythm_intensity_embeddings = nn.Embedding(
-            config.num_relative_rhythmic_intensity_bins, config.relative_rhythmic_intensity_emb_dim, padding_idx=config.attribute_pad_id)
+            config.num_relative_rhythmic_intensity_bins, config.relative_rhythmic_intensity_emb_dim, padding_idx=config.attribute_pad_id
+        )
         
         total_attribute_dim = (
             config.pitch_overlap_ratio_emb_dim + config.relative_polyphony_emb_dim +
@@ -187,7 +189,6 @@ class EtudeDecoder(PreTrainedModel):
         hidden_states = transformer_outputs[0]
         logits = self.lm_head(hidden_states)
 
-        # 5. Calculate loss if labels are provided.
         loss = None
         if labels is not None:
             loss = F.cross_entropy(logits.view(-1, self.config.vocab_size), labels.view(-1))
@@ -208,7 +209,7 @@ class EtudeDecoder(PreTrainedModel):
     @torch.no_grad()
     def generate(
         self,
-        vocab, # Pass the Vocab object directly
+        vocab,
         all_x_bars: List[List[int]],
         target_attributes_per_bar: List[Dict[str, int]],
         max_output_tokens: int = 25600,
@@ -216,7 +217,7 @@ class EtudeDecoder(PreTrainedModel):
         temperature: float = 0.8,
         top_p: float = 0.9,
         context_overlap_ratio: float = 0.5,
-    ) -> List: # Returns a list of Event objects
+    ) -> List:
         
         device = next(self.parameters()).device
         self.eval()
@@ -258,7 +259,7 @@ class EtudeDecoder(PreTrainedModel):
 
             # A. Fill with empty history
             for _ in range(padding_needed):
-                for class_id in [COND_CLASS_ID, TGT_CLASS_ID]:
+                for class_id in [SRC_CLASS_ID, TGT_CLASS_ID]:
                     prompt_tokens.extend(empty_bar_ids)
                     p_classes.extend([class_id] * len(empty_bar_ids))
                     for key in user_attr_keys: 
@@ -266,15 +267,15 @@ class EtudeDecoder(PreTrainedModel):
 
             # B. Add actual history
             for x_ids, y_ids, attrs in history_to_use:
-                for item_ids, class_id in [(x_ids, COND_CLASS_ID), (y_ids, TGT_CLASS_ID)]:
+                for item_ids, class_id in [(x_ids, SRC_CLASS_ID), (y_ids, TGT_CLASS_ID)]:
                     prompt_tokens.extend(item_ids) 
                     p_classes.extend([class_id] * len(item_ids))
                     for key in user_attr_keys: 
                         p_attr_lists[key].extend([attrs[key]] * len(item_ids))
 
-            # C. Add current Xi (the condition)
-            prompt_tokens.extend(current_xi_ids) 
-            p_classes.extend([COND_CLASS_ID] * len(current_xi_ids))
+            # C. Add current Xi (the condition bar)
+            prompt_tokens.extend(current_xi_ids)
+            p_classes.extend([SRC_CLASS_ID] * len(current_xi_ids))
             for key in user_attr_keys: 
                 p_attr_lists[key].extend([current_yi_attrs[key]] * len(current_xi_ids))
             

@@ -13,10 +13,10 @@ import yaml
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
-from src.etude.data.dataset import EtudeDataset
-from src.etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
-from src.etude.decode.vocab import Vocab
-from src.etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
+from etude.data.dataset import EtudeDataset
+from etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
+from etude.decode.vocab import Vocab
+from etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
 
 class Trainer:
     """Encapsulates the entire training process."""
@@ -26,8 +26,9 @@ class Trainer:
         
         # --- Setup Environment and Paths ---
         set_seed(self.config['environment']['seed'])
-        self.output_dir = Path(self.config['logging_and_checkpointing']['output_dir'])
-        run_id = self.config['run_id'] or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_id = self.config['environment']['run_id'] or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        self.output_dir = Path(self.config['checkpoint']['output_dir'])
         self.run_dir = self.output_dir / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         print(f"[SETUP] Run ID: {run_id}")
@@ -71,7 +72,7 @@ class Trainer:
         
         # --- Resume from Checkpoint if specified ---
         self.start_epoch, self.global_step = 0, 0
-        resume_run_id = self.config['logging_and_checkpointing'].get('resume_from_checkpoint')
+        resume_run_id = self.config['checkpoint'].get('resume_from_checkpoint')
         if resume_run_id:
             resume_dir = self.output_dir / resume_run_id
             self.start_epoch, self.global_step = load_checkpoint(
@@ -80,33 +81,11 @@ class Trainer:
 
     def _create_model_config(self, vocab: Vocab) -> EtudeDecoderConfig:
         """Creates the model configuration from the YAML config."""
-        model_cfg = self.config['model']
-        # Dynamically set attribute bin dimensions
-        num_bins = model_cfg['num_attribute_bins']
-        emb_dim = model_cfg['attribute_emb_dim']
+        model_cfg_dict = self.config['model'].copy()
+        model_cfg_dict['vocab_size'] = len(vocab)
+        model_cfg_dict['pad_token_id'] = vocab.get_pad_id()
         
-        return EtudeDecoderConfig(
-            vocab_size=len(vocab),
-            pad_token_id=vocab.get_pad_id(),
-            hidden_size=model_cfg['hidden_size'],
-            num_hidden_layers=model_cfg['num_hidden_layers'],
-            num_attention_heads=model_cfg['num_attention_heads'],
-            intermediate_size=model_cfg['intermediate_size'],
-            max_position_embeddings=model_cfg['max_position_embeddings'],
-            num_classes=model_cfg['num_classes'],
-            pad_class_id=model_cfg['pad_class_id'],
-            attribute_pad_id=model_cfg['attribute_pad_id'],
-            context_num_past_xy_pairs=model_cfg['context_num_past_xy_pairs'],
-            # Attributes
-            num_relative_polyphony_bins=num_bins,
-            relative_polyphony_emb_dim=emb_dim,
-            num_relative_rhythmic_intensity_bins=num_bins,
-            relative_rhythmic_intensity_emb_dim=emb_dim,
-            num_relative_note_sustain_bins=num_bins,
-            relative_note_sustain_emb_dim=emb_dim,
-            num_pitch_overlap_ratio_bins=num_bins,
-            pitch_overlap_ratio_emb_dim=emb_dim,
-        )
+        return EtudeDecoderConfig(**model_cfg_dict)
 
     def _create_scheduler(self):
         """Creates the learning rate scheduler."""
@@ -168,7 +147,7 @@ class Trainer:
                 pbar.set_postfix({"Loss": f"{loss.item():.4f}", "LR": f"{self.scheduler.get_last_lr()[0]:.3e}"})
 
             # --- End of Epoch ---
-            is_save_epoch = ((epoch + 1) % self.config['logging_and_checkpointing']['save_every_n_epochs'] == 0) or \
+            is_save_epoch = ((epoch + 1) % self.config['checkpoint']['save_every_n_epochs'] == 0) or \
                             ((epoch + 1) == self.config['training']['num_epochs'])
             
             save_checkpoint(

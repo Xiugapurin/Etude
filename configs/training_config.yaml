@@ -1,9 +1,9 @@
 # Configuration for the main training pipeline of the EtudeDecoder model.
 
 # --- Environment and Paths ---
-run_id: "etude_decoder_v1" # A specific name for this training run
-seed: 1234
-output_dir: "outputs"
+environment:
+  run_id: "" # A specific name for this training run
+  seed: 1234
 
 data:
   dataset_dir: "dataset/tokenized/"
@@ -12,7 +12,6 @@ data:
   num_workers: 4
 
 # --- Model Architecture ---
-# This section directly configures the EtudeDecoderConfig
 model:
   hidden_size: 512
   num_hidden_layers: 8
@@ -20,13 +19,13 @@ model:
   intermediate_size: 2048
   max_position_embeddings: 1024
 
+  num_attribute_bins: 3
+  attribute_emb_dim: 64
+
   num_classes: 3
   pad_class_id: 0
   attribute_pad_id: 0
   context_num_past_xy_pairs: 4
-
-  num_attribute_bins: 3
-  attribute_emb_dim: 64
 
 # --- Training Parameters ---
 training:
@@ -44,6 +43,7 @@ training:
   warmup_epochs: 10
 
 # --- Logging and Checkpointing ---
-checkpointing:
+checkpoint:
   save_every_n_epochs: 10 # Save a permanent checkpoint every N epochs
   resume_from_checkpoint: null # Specify a run_id to resume, or null to start fresh
+  output_dir: "outputs/train"

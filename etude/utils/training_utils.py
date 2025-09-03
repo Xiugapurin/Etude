@@ -39,7 +39,7 @@ def save_checkpoint(
     if is_epoch_end:
         epoch_path = run_dir / f"epoch_{(epoch + 1):04d}.pth"
         shutil.copyfile(latest_path, epoch_path)
-        print(f"  [Checkpoint] Epoch-specific checkpoint saved to {epoch_path}")
+        print(f"[INFO] Epoch-specific checkpoint saved to {epoch_path}")
 
 def load_checkpoint(
     run_dir: Path,

@@ -15,7 +15,7 @@ from .vocab import Event
 
 # --- Tokenization Constants ---
 PAD_CLASS_ID = 0
-COND_CLASS_ID = 1
+SRC_CLASS_ID = 1
 TGT_CLASS_ID = 2
 IDX_2_POS = {0: 0.0, 1: 1/6, 2: 1/4, 3: 1/3, 4: 1/2, 5: 2/3, 6: 3/4, 7: 5/6}
 ALLOWED_DURATION = [0.0, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1.0, 1.5, 2.0, 3.0, 4.0]
