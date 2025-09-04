@@ -28,7 +28,7 @@ structuralize:
 # See configs/training_config.yaml for model architecture details.
 decoder:
   model_path: "checkpoints/decoder/latest.pth"
-  config_path: "checkpoints/decoder/etude_decoder_config.json"
+  config_path: "assets/etude_decoder_config.json"
   vocab_path: "assets/vocab.json"
 
   # Generation (sampling) parameters
