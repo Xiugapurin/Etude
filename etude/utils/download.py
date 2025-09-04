@@ -1,4 +1,4 @@
-# src/etude/utils/download.py
+# etude/utils/download.py
 
 import sys
 import traceback

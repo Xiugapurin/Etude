@@ -1,4 +1,4 @@
-# src/etude/models/beat_transformer.py
+# etude/models/beat_transformer.py
 
 """
 Defines the Demixed_DilatedTransformerModel for beat and downbeat activation detection.

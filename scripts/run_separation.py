@@ -1,4 +1,4 @@
-# scripts/preprocessing/run_separation.py
+# scripts/run_separation.py
 
 import argparse
 import sys

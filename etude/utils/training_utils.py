@@ -1,4 +1,4 @@
-# src/etude/utils/utils.py
+# etude/utils/training_utils.py
 
 import torch
 import random
@@ -7,7 +7,6 @@ import shutil
 from pathlib import Path
 
 def set_seed(seed_value: int):
-    """Sets the random seed for reproducibility."""
     random.seed(seed_value)
     np.random.seed(seed_value)
     torch.manual_seed(seed_value)

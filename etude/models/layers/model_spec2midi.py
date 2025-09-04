@@ -1,4 +1,15 @@
-#! python
+# etude/models/layers/model_spec2midi.py
+
+"""
+This file is adapted from the hFT-Transformer project & the AMT-APC project. 
+
+- Repository: 
+    > https://github.com/sony/hFT-Transformer
+    > https://github.com/misya11p/amt-apc
+- Original files: 
+    > hFT-Transformer/model/model_spec2midi.py
+    > amt-apc/models/hFT_Transformer/model_spec2midi.py
+"""
 
 import torch
 import torch.nn as nn

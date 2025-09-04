@@ -1,9 +1,10 @@
+# etude/models/layers/dilated_transformer_layer.py
+
 """
 This file is adapted from the Beat-Transformer project.
 
-  - Repository: https://github.com/zhaojw1998/Beat-Transformer
-  - Original File: /code/DilatedTransformerLayer.py
-----------------------------------------------------------------------
+- Repository: https://github.com/zhaojw1998/Beat-Transformer
+- Original File: /code/DilatedTransformerLayer.py
 """
 
 

@@ -1,4 +1,4 @@
-# src/etude/data/dataset.py
+# etude/data/dataset.py
 
 import json
 import random
@@ -12,9 +12,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from ..decode.vocab import Vocab
+from .vocab import Vocab
 
-# --- Global Constants ---
 SRC_CLASS_ID = 1
 TGT_CLASS_ID = 2
 PAD_CLASS_ID = 0

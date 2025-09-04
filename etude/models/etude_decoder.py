@@ -1,4 +1,4 @@
-# src/etude/models/etude_decoder.py
+# etude/models/etude_decoder.py
 
 """
 Defines the core EtudeDecoder model for the 'decode' stage.
@@ -228,10 +228,12 @@ class EtudeDecoder(PreTrainedModel):
                 raise ValueError("Bar tokens not in vocab.")
             num_past_xy_pairs_for_context = self.config.context_num_past_xy_pairs
         except Exception as e:
-            print(f"Error accessing vocab/config: {e}", file=sys.stderr); return []
+            print(f"[ERROR] accessing vocab/config: {e}", file=sys.stderr); 
+            return []
 
         if not all_x_bars or len(all_x_bars) != len(target_attributes_per_bar):
-            print("Error: Condition bars mismatch with target attributes.", file=sys.stderr); return []
+            print("[ERROR] Condition bars mismatch with target attributes.", file=sys.stderr); 
+            return []
 
         attr_key_map = {
             "polyphony_bin": "polyphony_bin_ids",
@@ -349,5 +351,4 @@ class EtudeDecoder(PreTrainedModel):
             pbar.set_postfix({"Generated Tokens": total_generated_target_tokens})
             if total_generated_target_tokens >= max_output_tokens: break
 
-        print(f"\nGeneration finished. Total target tokens: {total_generated_target_tokens}")
         return generated_events_final

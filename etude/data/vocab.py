@@ -1,4 +1,4 @@
-# etude/decode/vocab.py
+# etude/data/vocab.py
 
 import json
 import torch

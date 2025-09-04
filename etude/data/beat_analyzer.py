@@ -1,4 +1,4 @@
-# src/etude/preprocessing/beat_analyzer.py
+# etude/data/beat_analyzer.py
 
 import json
 import math

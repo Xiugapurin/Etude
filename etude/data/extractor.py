@@ -1,9 +1,11 @@
-# src/etude/extraction/pipeline.py
+# etude/data/extractor.py
 
 """
-Audio-to-MIDI Extraction Pipeline.
+Audio-to-Note Extraction Pipeline for the 'Extract' Stage.
 
-This module provides the main class `AMT_Extractor` for performing Automatic Music Transcription (AMT).
+This module provides the main class, `AMTAPC_Extractor`, which uses the
+AMT-APC model architecture as an "extractor". Its primary function is to
+convert a raw audio waveform into a sequence of piano cover MIDI notes.
 
 Source: The logic is a refactored and merged version based on the AMT-APC project.
 https://github.com/misya11p/amt-apc

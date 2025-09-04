@@ -1,4 +1,4 @@
-# src/etude/utils/model_loader.py
+# etude/utils/model_loader.py
 
 import torch
 from collections import OrderedDict

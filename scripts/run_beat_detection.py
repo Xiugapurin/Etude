@@ -1,4 +1,4 @@
-# scripts/structuralize/run_beat_detection.py
+# scripts/run_beat_detection.py
 
 import argparse
 import json

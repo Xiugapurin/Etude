@@ -7,24 +7,24 @@ general:
   device: "auto" # 'auto', 'cuda', or 'cpu'
 
 # --- Stage 0: Preprocessing ---
-preprocessing:
+preprocess:
   # Names of the isolated conda environments required for these steps.
   spleeter_env_name: "py38_spleeter"
   madmom_env_name: "py38_madmom"
 
 # --- Stage 1: Extract (Audio -> Notes) ---
 # See configs/extract_config.yaml for model architecture details.
-extractor:
+extract:
   model_path: "checkpoints/extractor/latest.pth"
   config_path: "configs/extract_config.yaml"
 
-# --- Stage 2: Structuralize (Notes -> Tempo Structure) ---
+# --- Stage 2: Structuralize (Notes -> Tempo Framework) ---
 # See configs/structuralize_config.yaml for model architecture details.
-structuralizer:
+structuralize:
   beat_model_path: "checkpoints/beat_detector/latest.pt"
   config_path: "configs/structuralize_config.yaml"
 
-# --- Stage 3: Decode (Structured Notes -> Final Music) ---
+# --- Stage 3: Decode (Structured Notes -> Piano Cover) ---
 # See configs/training_config.yaml for model architecture details.
 decoder:
   model_path: "checkpoints/decoder/latest.pth"

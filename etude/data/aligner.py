@@ -1,4 +1,4 @@
-# src/etude/preprocessing/aligner.py
+# etude/data/aligner.py
 
 import json
 from pathlib import Path

@@ -1,4 +1,4 @@
-# src/etude/models/amt_apc.py
+# etude/models/amt_apc.py
 
 """
 Core Transformer model definitions for hFT-Transformer.

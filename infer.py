@@ -9,11 +9,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 import torch
 
-from etude.extract.extractor import AMTAPC_Extractor
-from etude.structuralize.beat_analyzer import BeatAnalyzer
-from etude.structuralize.audio_analyzer import analyze_volume, save_volume_map
-from etude.decode.tokenizer import TinyREMITokenizer
-from etude.decode.vocab import Vocab
+from etude.data.extractor import AMTAPC_Extractor
+from etude.data.beat_analyzer import BeatAnalyzer
+from etude.data.tokenizer import TinyREMITokenizer
+from etude.data.vocab import Vocab
+from etude.utils.preprocess import analyze_volume, save_volume_map
 from etude.utils.model_loader import load_etude_decoder
 from etude.utils.download import download_audio_from_url
 
@@ -63,11 +63,10 @@ class InferencePipeline:
         
         return local_audio_path
 
-    # --- NEW: Stage-specific methods for clarity ---
     def _run_stage1_extract(self, audio_path: Path):
         """Runs the AMT extraction process."""
         print("\n[STAGE 1] Extracting feature notes...")
-        ext_cfg = self.config['extractor']
+        ext_cfg = self.config['extract']
         with open(ext_cfg['config_path'], 'r') as f: 
             amt_config = yaml.safe_load(f)
         
@@ -84,25 +83,25 @@ class InferencePipeline:
     def _run_stage2_structuralize(self, audio_path: Path):
         """Runs the beat detection and tempo analysis process."""
         print("\n[STAGE 2] Structuralizing tempo information.")
-        spleeter_cmd = [ "conda", "run", "-n", self.config['preprocessing']['spleeter_env_name'],
-                         "python", "scripts/preprocessing/run_separation.py",
+        spleeter_cmd = [ "conda", "run", "-n", self.config['preprocess']['spleeter_env_name'],
+                         "python", "scripts/run_separation.py",
                          "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
         print("    > Running source separation for beat detection...")
         self._run_command(spleeter_cmd)
 
-        beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocessing']['madmom_env_name'],
-                               "python", "scripts/structuralize/run_beat_detection.py",
+        beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocess']['madmom_env_name'],
+                               "python", "scripts/run_beat_detection.py",
                                "--input_npy", str(self.work_dir / "sep.npy"),
                                "--output_json", str(self.work_dir / "beat_pred.json"),
-                               "--model_path", self.config['structuralizer']['beat_model_path'],
-                               "--config_path", self.config['structuralizer']['config_path'] ]
+                               "--model_path", self.config['structuralize']['beat_model_path'],
+                               "--config_path", self.config['structuralize']['config_path'] ]
         print("    > Running beat detection...")
         self._run_command(beat_detection_cmd)
 
         print("    > Analyzing beats to generate tempo structure...")
         beat_analyzer = BeatAnalyzer()
         tempo_data = beat_analyzer.analyze(self.work_dir / "beat_pred.json")
-        BeatAnalyzer.save_tempo_data(tempo_data, self.work_dir / "tempo.json")
+        beat_analyzer.save_tempo_data(tempo_data, self.work_dir / "tempo.json")
 
     def _run_stage3_decode(self, target_attributes: dict, final_filename: str):
         """Runs the final music generation based on the intermediate files."""

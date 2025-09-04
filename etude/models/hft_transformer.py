@@ -1,4 +1,13 @@
-# etude/transcription/hft_transformer.py
+# etude/models/hft_transformer.py
+
+"""
+Provides the HFT_Transformer class for Automatic Music Transcription.
+
+The logic in this file is a significant refactoring and reorganization
+of the original scripts found in the hFT-Transformer project.
+
+- Original Repository: https://github.com/sony/hFT-Transformer
+"""
 
 import io
 import sys
@@ -10,9 +19,8 @@ from typing import Dict, Union
 import numpy as np
 import torch
 import torchaudio
-from tqdm import tqdm
 
-from ..models import amt_apc
+from . import amt_apc
 
 class CustomUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
@@ -23,7 +31,7 @@ class CustomUnpickler(pickle.Unpickler):
             return getattr(sys.modules[new_module], name)
         return super().find_class(module, name)
 
-class HFT_Transcriber:
+class HFT_Transformer:
     """
     A fully integrated transcriber based on the hFT-Transformer pipeline.
     """

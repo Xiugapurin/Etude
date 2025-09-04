@@ -1,4 +1,4 @@
-# scripts/prepare_dataset.py
+# prepare.py
 
 import argparse
 import sys
@@ -10,22 +10,18 @@ import yaml
 import json
 from tqdm import tqdm
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.append(str(PROJECT_ROOT))
-
-# Import all necessary utilities from our library
 from etude.utils.download import download_audio_from_url
-from etude.transcription.hft_transformer import HFT_Transcriber
-from etude.structuralize.beat_analyzer import BeatAnalyzer
-from etude.structuralize.aligner import AudioAligner
+from etude.models.hft_transformer import HFT_Transformer
+from etude.data.beat_analyzer import BeatAnalyzer
+from etude.data.aligner import AudioAligner
 from etude.utils.preprocess import (
     compute_wp_std,
     create_time_map_from_downbeats,
     weakly_align
 )
-from etude.extract.extractor import AMTAPC_Extractor
-from etude.decode.tokenizer import TinyREMITokenizer
-from etude.decode.vocab import Vocab, PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN
+from etude.data.extractor import AMTAPC_Extractor
+from etude.data.tokenizer import TinyREMITokenizer
+from etude.data.vocab import Vocab, PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN
 
 def run_stage_1_download(config: dict, verbose: bool = False):
     """
@@ -91,7 +87,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     with open(hft_config['feature_config_path'], 'r') as f:
         hft_feature_config = json.load(f)
     
-    transcriber = HFT_Transcriber(
+    transcriber = HFT_Transformer(
         config=hft_feature_config,
         model_path=hft_config['model_path'],
         verbose=verbose

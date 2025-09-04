@@ -15,7 +15,7 @@ from transformers import get_cosine_schedule_with_warmup
 
 from etude.data.dataset import EtudeDataset
 from etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
-from etude.decode.vocab import Vocab
+from etude.data.vocab import Vocab
 from etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
 
 class Trainer:

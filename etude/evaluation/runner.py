@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 from tqdm import tqdm
 
-from ..structuralize.aligner import AudioAligner
+from ..data.aligner import AudioAligner
 from .metrics.wpd import WPDCalculator
 from .metrics.rgc import RGCCalculator
 from .metrics.ipe import IPECalculator
