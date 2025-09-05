@@ -48,7 +48,7 @@ class EtudeDataset(Dataset):
             data_format: str = 'npy',
             num_attribute_bins: int = 3,
             context_num_past_xy_pairs: int = 4,
-            verbose_stats: bool = True
+            verbose: bool = False
         ):
         """
         Initializes the Dataset.
@@ -62,7 +62,7 @@ class EtudeDataset(Dataset):
             data_format (str): Storage format of sequence files ('npy', 'pt', 'json').
             num_attribute_bins (int): The number of bins for quantizing musical attributes.
             context_num_past_xy_pairs (int): The number of past (X, Y) bar pairs to use as context.
-            verbose_stats (bool): If True, prints detailed dataset statistics during initialization.
+            verbose (bool): If True, prints detailed dataset statistics during initialization.
         """
         # --- Parameter Setup ---
         self.dataset_dir = Path(dataset_dir)
@@ -73,7 +73,7 @@ class EtudeDataset(Dataset):
         self.data_format = data_format
         self.num_attribute_bins = num_attribute_bins
         self.context_num_past_xy_pairs = context_num_past_xy_pairs
-        self.verbose_stats = verbose_stats
+        self.verbose = verbose
 
         # --- Fetch Special Token IDs from Vocabulary ---
         self.pad_id = self.vocab.get_pad_id()
@@ -109,14 +109,14 @@ class EtudeDataset(Dataset):
         print(f"Phase 2: Calculating bin edges for {self.num_attribute_bins} bins...")
         self.attribute_bin_edges = self._calculate_bin_edges(all_bar_data)
         
-        if self.verbose_stats:
+        if self.verbose:
             self._print_dataset_statistics(all_bar_data)
 
         # Phase 3: Create the sample map for fast lookup in __getitem__.
         print("Phase 3: Creating sample map for lazy loading...")
         self._create_sample_map()
         
-        if self.verbose_stats and self.sample_map:
+        if self.verbose and self.sample_map:
             self._print_chunk_stats()
             
         print(f"\nDataset initialized. Total training samples (chunks): {len(self.sample_map)}")

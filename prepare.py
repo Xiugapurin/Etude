@@ -74,22 +74,21 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     """
     print("\n" + "="*25 + " Stage 2: Preprocessing " + "="*25)
     
+    # TODO: Skip already preprocessed directories
+    
     raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    with open("configs/structuralize_config.yaml", 'r') as f:
-        struct_config = yaml.safe_load(f)
+    with open("configs/project_config.yaml", 'r') as f:
+        project_config = yaml.safe_load(f)
 
-    with open("configs/transcription_config.yaml", 'r') as f:
-        hft_config = yaml.safe_load(f)
-    
-    with open(hft_config['feature_config_path'], 'r') as f:
+    with open(config['preprocess']['hft_transformer']['feature_config_path'], 'r') as f:
         hft_feature_config = json.load(f)
     
     transcriber = HFT_Transformer(
         config=hft_feature_config,
-        model_path=hft_config['model_path'],
+        model_path=config['preprocess']['hft_transformer']['model_path'],
         verbose=verbose
     )
 
@@ -114,7 +113,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
             transcriber.transcribe(
                 input_wav_path=cover_wav,
                 output_json_path=transcription_json,
-                inference_params=hft_config['inference_params']
+                inference_params=config['preprocess']['hft_transformer']['inference_params']
             )
 
         # --- Beat Detection (for origin.wav) ---
@@ -132,19 +131,19 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
                 print(f"\n    > Processing beats for {song_name}...")
             
             spleeter_cmd = [
-                "conda", "run", "-n", struct_config['spleeter_env_name'],
+                "conda", "run", "-n", project_config['env']['spleeter_env_name'],
                 "python", "scripts/run_separation.py",
                 "--input", str(origin_wav), "--output", str(sep_npy_path)
             ]
             subprocess.run(spleeter_cmd, check=True, capture_output=True)
 
             beat_detection_cmd = [
-                "conda", "run", "-n", struct_config['madmom_env_name'],
+                "conda", "run", "-n", project_config['env']['madmom_env_name'],
                 "python", "scripts/run_beat_detection.py",
                 "--input_npy", str(sep_npy_path),
                 "--output_json", str(beat_pred_path),
-                "--model_path", struct_config['beat_model_path'],
-                "--config_path", "configs/structuralize_config.yaml"
+                "--model_path", config['preprocess']['beat_model_path'],
+                "--config_path", config['preprocess']['config_path']
             ]
             subprocess.run(beat_detection_cmd, check=True, capture_output=True)
             
@@ -386,7 +385,7 @@ def main():
         description="End-to-end data preparation pipeline for the Etude project."
     )
     parser.add_argument(
-        "--config", type=str, default="configs/data_prepare_config.yaml",
+        "--config", type=str, default="configs/prepare_config.yaml",
         help="Path to the main data preparation configuration file."
     )
     parser.add_argument(

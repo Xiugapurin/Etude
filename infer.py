@@ -22,6 +22,9 @@ class InferencePipeline:
     """Orchestrates the entire inference process from audio to final MIDI."""
     def __init__(self, config: dict):
         self.config = config
+        with open("configs/project_config.yaml", 'r') as f:
+            self.project_config = yaml.safe_load(f)
+
         self.device = config['general']['device']
         if self.device == 'auto':
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -66,11 +69,11 @@ class InferencePipeline:
     def _run_stage1_extract(self, audio_path: Path):
         """Runs the AMT extraction process."""
         print("\n[STAGE 1] Extracting feature notes...")
-        ext_cfg = self.config['extract']
-        with open(ext_cfg['config_path'], 'r') as f: 
-            amt_config = yaml.safe_load(f)
+        extract_config = self.config['extract']
+        with open(extract_config['config_path'], 'r') as f: 
+            amtapc_config = yaml.safe_load(f)
         
-        extractor = AMTAPC_Extractor(config=amt_config, model_path=ext_cfg['model_path'], device=self.device)
+        extractor = AMTAPC_Extractor(config=amtapc_config, model_path=extract_config['model_path'], device=self.device)
         extractor.extract(
             audio_path=str(audio_path),
             output_json_path=str(self.work_dir / "extract.json")
@@ -83,13 +86,13 @@ class InferencePipeline:
     def _run_stage2_structuralize(self, audio_path: Path):
         """Runs the beat detection and tempo analysis process."""
         print("\n[STAGE 2] Structuralizing tempo information.")
-        spleeter_cmd = [ "conda", "run", "-n", self.config['preprocess']['spleeter_env_name'],
+        spleeter_cmd = [ "conda", "run", "-n", self.project_config['env']['spleeter_env_name'],
                          "python", "scripts/run_separation.py",
                          "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
         print("    > Running source separation for beat detection...")
         self._run_command(spleeter_cmd)
 
-        beat_detection_cmd = [ "conda", "run", "-n", self.config['preprocess']['madmom_env_name'],
+        beat_detection_cmd = [ "conda", "run", "-n", self.project_config['env']['madmom_env_name'],
                                "python", "scripts/run_beat_detection.py",
                                "--input_npy", str(self.work_dir / "sep.npy"),
                                "--output_json", str(self.work_dir / "beat_pred.json"),
@@ -106,9 +109,9 @@ class InferencePipeline:
     def _run_stage3_decode(self, target_attributes: dict, final_filename: str):
         """Runs the final music generation based on the intermediate files."""
         print("\n[STAGE 3] Decoding with target attributes to generate piano cover.")
-        dec_cfg = self.config['decoder']
-        model = load_etude_decoder(dec_cfg['config_path'], dec_cfg['model_path'], self.device)
-        vocab = Vocab.load(dec_cfg['vocab_path'])
+        decode_config = self.config['decoder']
+        model = load_etude_decoder(decode_config['config_path'], decode_config['model_path'], self.device)
+        vocab = Vocab.load(decode_config['vocab_path'])
         tokenizer = TinyREMITokenizer(tempo_path=self.work_dir / "tempo.json")
 
         condition_events = tokenizer.encode(str(self.work_dir / "extract.json"))
@@ -123,8 +126,8 @@ class InferencePipeline:
             vocab=vocab, 
             all_x_bars=all_x_bars,
             target_attributes_per_bar=target_attributes_per_bar,
-            temperature=dec_cfg['temperature'], 
-            top_p=dec_cfg['top_p']
+            temperature=decode_config['temperature'], 
+            top_p=decode_config['top_p']
         )
         
         if generated_events:

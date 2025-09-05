@@ -7,7 +7,7 @@ environment:
 
 data:
   dataset_dir: "dataset/tokenized/"
-  vocab_path: "assets/vocab.json"
+  vocab_path: "dataset/vocab.json"
   data_format: "npy"
   num_workers: 4
 

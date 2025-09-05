@@ -1,8 +1,5 @@
-# Configuration for the structuralization stage, including beat detection.
+# Configuration for the structuralize stage.
 
-spleeter_env_name: "py38_spleeter"
-madmom_env_name: "py38_madmom"
-beat_model_path: "checkpoints/beat_detector/latest.pt"
 beat_detection:
   # DBN Beat Tracker Parameters (from madmom)
   min_bpm: 70.0

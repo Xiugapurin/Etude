@@ -1,0 +1,6 @@
+# Configuration for the project environment.
+
+# Names of the isolated conda environments.
+env:
+  spleeter_env_name: "py38_spleeter"
+  madmom_env_name: "py38_madmom"

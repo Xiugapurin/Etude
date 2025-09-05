@@ -1,14 +1,14 @@
 # Configuration for the evaluation pipeline.
 
 # --- Paths and Data ---
-eval_dir: "songs"
-metadata_path: "songs/metadata.json"
+eval_dir: "docs/songs"
+metadata_path: "docs/songs/metadata.json"
 output_dir: "outputs/evaluation"
 report_image_filename: "evaluation_summary.png"
 report_csv_filename: "evaluation_results.csv"
 
 # --- Versions to Evaluate ---
-# The key is the identifier used in filenames (e.g., 'cover.mid', 'etude_d.mid')
+# The key is the identifier used in filenames (e.g., 'human.mid', 'etude_d.mid')
 # The value is the display name used in reports and plots.
 versions:
   human: "Human"

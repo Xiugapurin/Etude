@@ -52,6 +52,7 @@ class Trainer:
             data_format=self.config['data']['data_format'],
             num_attribute_bins=self.model_config.num_attribute_bins,
             context_num_past_xy_pairs=self.model_config.context_num_past_xy_pairs,
+            verbose=False
         )
         self.dataloader = dataset.get_dataloader(
             self.config['training']['batch_size'],
@@ -163,6 +164,8 @@ def main():
         "--config", type=str, default="configs/training_config.yaml",
         help="Path to the training configuration YAML file."
     )
+
+    # TODO: Provide a --verbose flag
     args = parser.parse_args()
     
     with open(args.config, 'r') as f:

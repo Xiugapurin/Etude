@@ -6,12 +6,6 @@ general:
   output_dir: "outputs/inference"
   device: "auto" # 'auto', 'cuda', or 'cpu'
 
-# --- Stage 0: Preprocessing ---
-preprocess:
-  # Names of the isolated conda environments required for these steps.
-  spleeter_env_name: "py38_spleeter"
-  madmom_env_name: "py38_madmom"
-
 # --- Stage 1: Extract (Audio -> Notes) ---
 # See configs/extract_config.yaml for model architecture details.
 extract:
@@ -31,7 +25,7 @@ decoder:
   config_path: "assets/etude_decoder_config.json"
   vocab_path: "assets/vocab.json"
 
-  # Generation (sampling) parameters
+  # Generation parameters
   max_output_tokens: 25600
   max_bar_token_limit: 512
   temperature: 0
