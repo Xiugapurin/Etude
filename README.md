@@ -71,13 +71,13 @@ python infer.py --input "path/to/my/song.wav"
 
 ## Inference Guide
 
-The Etude framework offers controllable piano cover generation. You can adjust three high-level musical attributes to steer the style of the output. The value for each attribute ranges from 0 (low intensity) to 2 (high intensity), with 1 being the default neutral value.
+The **Etude** framework offers controllable piano cover generation. You can adjust three high-level musical attributes to steer the style of the output. The value for each attribute ranges from 0 (low intensity) to 2 (high intensity), with 1 being the default neutral value.
 
 ### Controllable Attributes
 
-- Polyphony: Controls the density of the musical texture.
-- Rhythm Intensity: Controls the rhythmic complexity and activity.
-- Note Sustain: Controls the average duration of notes (articulation).
+- **Polyphony**: Controls the density of the musical texture.
+- **Rhythm Intensity**: Controls the rhythmic complexity and activity.
+- **Note Sustain**: Controls the average duration of notes (articulation).
 
 You can specify these attributes as command-line arguments to creatively guide the generation.
 
@@ -106,7 +106,7 @@ The evaluate.py script is a command-line tool for calculating and analyzing vari
 This command will calculate all metrics for all versions specified in your configuration file and generate a full report.
 
 ```bash
-python evaluate.py --config configs/evaluation_config.yaml
+python evaluate.py --config configs/evaluate_config.yaml
 ```
 
 ### Partial & Specific Evaluation

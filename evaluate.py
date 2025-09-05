@@ -9,7 +9,7 @@ from etude.evaluation.reporting import ReportGenerator
 
 def main():
     parser = argparse.ArgumentParser(description="Run the evaluation pipeline for the Etude project.")
-    parser.add_argument("--config", type=str, default="configs/evaluation_config.yaml", help="Path to the evaluation configuration file.")
+    parser.add_argument("--config", type=str, default="configs/evaluate_config.yaml", help="Path to the evaluation configuration file.")
     parser.add_argument("--metrics", nargs='+', choices=['wpd', 'rgc', 'ipe'], help="Specify which metrics to run. Runs all by default.")
     parser.add_argument("--versions", nargs='+', help="Specify which versions to evaluate. Runs all by default.")
     parser.add_argument("--output-csv", type=str, help="Path to save the raw results to a CSV file.")
