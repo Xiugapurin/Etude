@@ -1,7 +1,6 @@
 # etude/data/tokenizer.py
 
 import sys
-import copy
 import json
 from pathlib import Path
 from collections import defaultdict
@@ -9,7 +8,6 @@ from typing import Union, Optional
 
 import numpy as np
 import pretty_midi
-from music21 import stream, note, meter, chord, clef, instrument, metadata, duration, tempo, key
 
 from .vocab import Event
 
@@ -18,7 +16,6 @@ PAD_CLASS_ID = 0
 SRC_CLASS_ID = 1
 TGT_CLASS_ID = 2
 IDX_2_POS = {0: 0.0, 1: 1/6, 2: 1/4, 3: 1/3, 4: 1/2, 5: 2/3, 6: 3/4, 7: 5/6}
-ALLOWED_DURATION = [0.0, 1/6, 1/4, 1/3, 1/2, 2/3, 3/4, 1.0, 1.5, 2.0, 3.0, 4.0]
 ALLOWED_DURATIONS_IN_16THS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
 
 
@@ -253,10 +250,9 @@ class TinyREMITokenizer:
                     break
 
 
-    def _add_bar_event(self, bos: bool = True, time_sig: int = 4) -> None:
+    def _add_bar_event(self, bos: bool = True) -> None:
         if bos:
             self.all_events.append(Event(type_="Bar", value="BOS"))
-            # self.all_events.append(Event(type_="TimeSig", value=time_sig))
         else:
             self.all_events.append(Event(type_="Bar", value="EOS"))
     
@@ -445,280 +441,6 @@ class TinyREMITokenizer:
                 note['velocity'] = int(max(0, min(127, grace_vel)))
                     
         return notes
-    
-
-    def _parse_chords(self, events: list[Event]) -> list[dict]:
-        n, m = len(events), len(self.global_measures)
-        if m != events.count(Event(type_="Bar", value="BOS")):
-            raise ValueError("Number of measures in events does not match the number of measures in the Tempo data.")
-        
-        chords = []
-        e_idx = m_idx = 0
-        while e_idx < n:
-            event = events[e_idx]
-            if event.type_ == "Bar" and event.value == "BOS":
-                measure = self.global_measures[m_idx]
-                m_start = measure["start"]
-                m_end = measure["end"]
-                m_duration = m_end - m_start
-                m_b_duration = m_duration / measure["time_sig"]
-
-                e_idx += 1
-                while e_idx < n and events[e_idx].type_ != "Bar":
-                    if events[e_idx].type_ == "TimeSig": 
-                        e_idx += 1
-                        continue
-
-                    if events[e_idx].type_ == "Pos":
-                        pos_idx = events[e_idx].value
-                        b_idx, b_rel_pos = self._parse_pos_idx(pos_idx)
-                        onset = m_start + (b_idx + b_rel_pos) * m_b_duration
-                        e_idx += 1
-                        continue
-                    
-                    chord = {
-                        "onset": onset,
-                        "rel_pos": (m_idx, pos_idx),
-                        "pitches": []
-                    }
-                    while e_idx < n and events[e_idx].type_ == "Note":
-                        chord["pitches"].append(events[e_idx].value)
-                        e_idx += 1
-                    
-                    chord["pitches"] = sorted(list(set(chord["pitches"])))
-
-                    chords.append(chord)
-            else:
-                m_idx += 1
-                e_idx += 1
-
-        return chords
-    
-
-    def _split_hands(self, chords: list[dict]) -> tuple[list[dict], list[dict]]:
-        prev_left, prev_right = (float("-inf"), []), (float("-inf"), []) # (onset, chord)
-        r_chord_list, l_chord_list = [], []
-
-        for chord in chords:
-            onset = chord["onset"]
-            rel_pos = chord["rel_pos"]
-            pitches = chord["pitches"]
-            l_chord = {"onset": onset, "rel_pos": rel_pos, "pitches": []}
-            r_chord = {"onset": onset, "rel_pos": rel_pos, "pitches": []}
-
-            for p in pitches:
-                if p >= 60:
-                    r_chord["pitches"].append(p)
-                else:
-                    l_chord["pitches"].append(p)
-            
-            if r_chord["pitches"]:
-                r_chord["pitches"] = sorted(list(set(r_chord["pitches"])))
-                r_chord_list.append(r_chord)
-            if l_chord["pitches"]:
-                l_chord["pitches"] = sorted(list(set(l_chord["pitches"])))
-                l_chord_list.append(l_chord)
-
-        return r_chord_list, l_chord_list
-    
-
-    def _calc_pos_diff(self, rel_pos_1: tuple[int, int], rel_pos_2: tuple[int, int]) -> int:
-        m_idx_1, pos_idx_1 = rel_pos_1
-        m_idx_2, pos_idx_2 = rel_pos_2
-
-        b_idx_1, b_rel_pos_1 = self._parse_pos_idx(pos_idx_1)
-        time_sig_1 = self.global_measures[m_idx_1]["time_sig"]
-
-        b_idx_2, b_rel_pos_2 = self._parse_pos_idx(pos_idx_2)
-
-        if m_idx_1 == m_idx_2:
-            diff = (b_idx_2 + b_rel_pos_2) - (b_idx_1 + b_rel_pos_1)
-        elif m_idx_1 + 1 == m_idx_2:
-            diff = (b_idx_2 + b_rel_pos_2) + (time_sig_1 - (b_idx_1 + b_rel_pos_1))
-        else:
-            diff = (time_sig_1 - (b_idx_1 + b_rel_pos_1))
-
-        closest = min(ALLOWED_DURATION, key=lambda x: abs(x - diff))
-
-        if abs(closest - diff) > 0.01:
-            idx = ALLOWED_DURATION.index(closest)
-            if diff < closest and idx > 0:
-                duration = ALLOWED_DURATION[idx - 1]
-            else:
-                duration = closest
-        else:
-            duration = closest
-
-        return duration
-
-    def _calc_next_pos(self, measure_info: list[dict], chords: list[dict]) -> int:
-        n = len(chords)
-
-        for i, chord in enumerate(chords):
-            rel_pos = chord["rel_pos"]
-            start_beat = measure_info[rel_pos[0]]["start_beat"]
-            b_idx, b_rel_pos = self._parse_pos_idx(rel_pos[1])
-
-            next_rel_pos = (float("inf"), 0) if i == n - 1 else chords[i + 1]["rel_pos"]
-            duration = self._calc_pos_diff(rel_pos, next_rel_pos)
-
-            measure_info[rel_pos[0]]["chords"].append({
-                "start": start_beat + b_idx + b_rel_pos,
-                "pitches": chord["pitches"],
-                "duration": duration
-            })
-
-    def _insert_note(self, part: stream.Part, pitch: int, onset: float, duration: float) -> None:
-        if pitch == 0:
-            n = note.Rest()
-        else:
-            n = note.Note(midi=pitch)
-        n.quarterLength = duration
-        part.insert(onset, n)
-
-    def _append_note(self, part: stream.Part, pitch: int, duration: float) -> None:
-        if pitch == 0:
-            n = note.Rest()
-        else:
-            n = note.Note(midi=pitch)
-        n.quarterLength = duration
-        part.append(n)
-
-    def _insert_triplet(self, part: stream.Part, note_list: list[dict], type: str, onset: float):
-        valid_types = {"eighth", "quarter", "half"}
-        if type not in valid_types:
-            raise ValueError(f"Triplet type must be one of {valid_types}, got '{type}'")
-        
-        if type == "eighth":
-            total_duration = 1.0
-        elif type == "quarter":
-            total_duration = 2.0
-        elif type == "half":
-            total_duration = 4.0
-
-        total_weight = sum(item["weight"] for item in note_list)
-        if total_weight != 3:
-            raise ValueError("The sum of weights in note_list must be 3.")
-
-        triplet = duration.Tuplet(3, 2, type)
-        
-        current_onset = onset
-        for item in note_list:
-            p = item["pitch"]
-            weight = item["weight"]
-            note_duration = (weight / 3) * total_duration
-            
-            if p == 0:
-                n = note.Rest()
-            else:
-                n = note.Note(midi=p)
-
-            n.quarterLength = note_duration
-            n.duration.type = type
-            n.duration.appendTuplet(copy.deepcopy(triplet))
-            
-            part.insert(current_onset, n)
-            current_onset += note_duration
-
-    def _append_chord(self, part: stream.Part, pitches: list[int], duration: float) -> None:
-        c = chord.Chord([*pitches])
-        c.quarterLength = duration
-
-        part.append(c)
-
-    def _insert_chord(self, part: stream.Part, pitches: list[int], onset: float, duration: float) -> None:
-        c = chord.Chord([*pitches])
-        c.quarterLength = duration
-        part.insert(onset, c)
-    
-    def _create_score(self, measure_info: list[dict], part: stream.Part) -> None:
-        prev_time_sig = -1
-        prev_bpm = -1
-
-        for m in measure_info:
-            time_sig = m["time_sig"]
-            start_beat = m["start_beat"]
-            bpm = round(m["bpm"])
-
-            if time_sig != prev_time_sig:
-                part.append(meter.TimeSignature(f"{str(time_sig)}/4"))
-                prev_time_sig = time_sig
-            
-            if bpm != prev_bpm:
-                part.insert(start_beat, tempo.MetronomeMark(number=bpm))
-                prev_bpm = bpm
-
-            for chord in m["chords"]:
-                pitches = chord["pitches"]
-                duration = chord["duration"]
-                start = chord["start"]
-
-                if not pitches:
-                    self._insert_note(part, 0, start_beat, time_sig)
-                elif len(pitches) == 1:
-                    self._insert_note(part, pitches[0], start, duration)
-                else:
-                    self._insert_chord(part, pitches, start, duration)
-
-    def decode_to_score(
-        self,
-        events,
-        title: str = "Piano Cover", 
-        composer: str = "None", 
-        path_out: str = "output.musicxml"
-    ) -> stream.Score:
-        r_measure_info = []
-        l_measure_info = []
-        accumulated_beats = 0
-
-        for measure in self.global_measures:
-            r_measure_info.append({
-                "start_beat": accumulated_beats,
-                "bpm": measure["bpm"],
-                "time_sig": measure["time_sig"],
-                "chords": []
-            })
-            l_measure_info.append({
-                "start_beat": accumulated_beats,
-                "bpm": measure["bpm"],
-                "time_sig": measure["time_sig"],
-                "chords": []
-            })
-
-            accumulated_beats += measure["time_sig"]
-
-        chords = self._parse_chords(events)
-        r_chord, l_chord = self._split_hands(chords)
-        self._calc_next_pos(r_measure_info, r_chord)
-        self._calc_next_pos(l_measure_info, l_chord)
-
-        score = stream.Score()
-        
-        score.metadata = metadata.Metadata()
-        score.metadata.title = title
-        score.metadata.composer = composer
-
-        r_part = stream.Part()
-        r_part.id = 'R-Part'
-        r_part.append(instrument.Piano())
-        r_part.append(clef.TrebleClef())
-
-        l_part = stream.Part()
-        l_part.id = 'L-Part'
-        l_part.append(instrument.Piano())
-        l_part.append(clef.BassClef())
-
-        self._create_score(r_measure_info, r_part)
-        self._create_score(l_measure_info, l_part)
-
-        score.insert(0, key.KeySignature(2))
-        score.append(r_part)
-        score.append(l_part)
-
-        # right_hand.append(meter.TimeSignature('4/4'))
-
-        # left_hand.append(meter.TimeSignature('4/4'))
-        score.write('musicxml', fp=path_out)
 
     def decode_to_notes(self, events: list[Event], volume_map_path: Optional[str] = None) -> list[dict]:
         volume_contour = None
