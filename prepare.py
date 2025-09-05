@@ -75,7 +75,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     print("\n" + "="*25 + " Stage 2: Preprocessing " + "="*25)
     
     # TODO: Skip already preprocessed directories
-    
+
     raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
     processed_dir.mkdir(parents=True, exist_ok=True)
@@ -389,11 +389,11 @@ def main():
         help="Path to the main data preparation configuration file."
     )
     parser.add_argument(
-        "--start-from", type=str, choices=['download', 'process', 'align', 'extract', 'tokenize'],
+        "--start-from", type=str, choices=['download', 'preprocess', 'align', 'extract', 'tokenize'],
         default='download', help="The stage to start the pipeline from."
     )
     parser.add_argument(
-        "--run-only", type=str, choices=['download', 'process', 'align', 'extract', 'tokenize'],
+        "--run-only", type=str, choices=['download', 'preprocess', 'align', 'extract', 'tokenize'],
         help="Run only a single specified stage."
     )
     parser.add_argument("--verbose", action="store_true", help="Enable detailed logging output for all stages.")
@@ -404,7 +404,7 @@ def main():
         config = yaml.safe_load(f)
 
     # --- Execute Pipeline Stages ---
-    pipeline_stages = ['download', 'process', 'align', 'extract', 'tokenize']
+    pipeline_stages = ['download', 'preprocess', 'align', 'extract', 'tokenize']
     start_index = pipeline_stages.index(args.start_from)
 
     for i, stage in enumerate(pipeline_stages):
@@ -416,7 +416,7 @@ def main():
 
         if stage == 'download':
             run_stage_1_download(config, verbose=args.verbose)
-        elif stage == 'process':
+        elif stage == 'preprocess':
             run_stage_2_preprocess(config, verbose=args.verbose)
         elif stage == 'align':
             run_stage_3_align_and_filter(config, verbose=args.verbose)
