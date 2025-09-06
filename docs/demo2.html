@@ -37,7 +37,7 @@
           </svg>
           Back
         </a>
-        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Controllable Generation Demo</h1>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Interactive Controllable Generation</h1>
         <p class="mt-3 text-base text-gray-600 max-w-3xl mx-auto">Adjust the sliders to change the musical attributes and listen to the result in real-time.</p>
       </div>
     </header>
@@ -159,7 +159,7 @@
           if (dom.player.src !== new URL(filePath, window.location.href).href) {
             dom.player.stop(); // Stop current playback
             dom.player.src = filePath;
-            dom.nowPlayingTitle.textContent = `Now Playing: Style (${polyphony}, ${rhythm}, ${sustain})`;
+            dom.nowPlayingTitle.textContent = `Demo`;
           }
         }
 
