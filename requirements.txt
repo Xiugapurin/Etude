@@ -1,6 +1,4 @@
-midi-player==0.5.1
 mido==1.3.2
-music21==5.7.2
 synctoolbox==1.3.2
 torch==2.6.0
 torchaudio==2.6.0
