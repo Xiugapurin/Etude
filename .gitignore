@@ -32,16 +32,8 @@ env/
 .idea/
 *.egg*/
 
-dataset/
-dataset/eval
 .cache/
 
+/dataset/
 /checkpoints/
-/beat_detection/checkpoint/
 /pretrained_models/
-/infer/src/
-/infer/output/
-/infer/test/
-/utils/sound_font/
-/user
-survey*
