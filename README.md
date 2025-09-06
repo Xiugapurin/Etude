@@ -51,7 +51,26 @@ conda deactivate
 
 Download the pre-trained model checkpoints and place them in their respective directories.
 
-TODO: Provide a release URL to download and extract all checkpoints.
+```bash
+  wget -O checkpoints.zip "https://github.com/Xiugapurin/Etude/releases/download/latest/checkpoints.zip"
+  unzip checkpoints.zip
+  rm checkpoints.zip
+```
+
+After downloading checkpoints, verify that the files have been placed correctly. Your project's `checkpoints/` directory should have the following structure:
+
+```
+checkpoints/
+├── beat_detector/
+│   └── latest.pt
+├── decoder/
+│   └── latest.pth
+├── extractor/
+│   └── latest.pth
+└── hft_transformer/
+    ├── config.json
+    └── latest.pkl
+```
 
 ### Generate Your Piano Cover
 
