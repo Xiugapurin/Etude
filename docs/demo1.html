@@ -90,6 +90,7 @@
             </svg>
           </button>
         </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
           <div class="md:col-span-1">
             <midi-player id="player" sound-font></midi-player>
@@ -97,6 +98,18 @@
           <div class="md:col-span-2">
             <midi-visualizer type="piano-roll" id="visualizer"></midi-visualizer>
           </div>
+        </div>
+
+        <div class="w-full h-[0.5px] bg-gray-900 py-2"></div>
+
+        <div class="text-center mt-2">
+          <p class="text-xs text-gray-400">
+            MIDI Player powered by
+            <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-gray-600">
+              html-midi-player
+            </a>
+            by Ondřej Cífka.
+          </p>
         </div>
       </div>
     </div>

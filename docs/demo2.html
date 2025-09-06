@@ -113,12 +113,39 @@
         </div>
 
         <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
-          <h2 id="now-playing-title" class="text-2xl font-bold mb-4 text-gray-800">Now Playing: Style (1, 1, 1)</h2>
+          <h2 id="now-playing-title" class="text-2xl font-bold mb-4 text-gray-800">Live Demo</h2>
           <midi-player id="player" sound-font class="w-full"></midi-player>
           <midi-visualizer type="piano-roll" id="visualizer" class="mt-4 rounded-lg"></midi-visualizer>
         </div>
+
+        <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+          <h2 class="text-2xl font-bold mb-4 text-gray-800">Origin Song: Mrs. GREEN APPLE - クスシキ</h2>
+          <div class="w-full aspect-video">
+            <iframe
+              class="w-full h-full rounded-lg"
+              src="https://www.youtube.com/embed/RCaTLn4qoz4"
+              title="YouTube video player for Etude Project"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen
+            >
+            </iframe>
+          </div>
+        </div>
       </div>
     </main>
+
+    <footer class="text-center py-4">
+      <div class="container mx-auto px-4">
+        <p class="text-xs text-gray-500">
+          MIDI Player & Visualizer powered by
+          <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-gray-700">
+            html-midi-player
+          </a>
+          by Ondřej Cífka.
+        </p>
+      </div>
+    </footer>
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {
@@ -159,7 +186,7 @@
           if (dom.player.src !== new URL(filePath, window.location.href).href) {
             dom.player.stop(); // Stop current playback
             dom.player.src = filePath;
-            dom.nowPlayingTitle.textContent = `Demo`;
+            dom.nowPlayingTitle.textContent = `Live Demo`;
           }
         }
 
