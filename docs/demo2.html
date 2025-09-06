@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Etude: Controllable Generation Demo</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+
+    <style>
+      body {
+        font-family: "Inter", "Noto Sans TC", sans-serif;
+      }
+      #player::part(control-panel) {
+        background: #f9fafb; /* gray-50 */
+        border: 1px solid #e5e7eb; /* gray-200 */
+      }
+      #visualizer {
+        border: 1px solid #e5e7eb; /* gray-200 */
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 text-gray-800">
+    <header class="text-center py-8 bg-white border-b border-gray-200">
+      <div class="container mx-auto px-4 relative">
+        <a
+          href="index.html"
+          class="absolute top-1/2 -translate-y-1/2 left-4 md:left-8 inline-flex items-center text-gray-500 hover:text-indigo-600 transition-colors"
+        >
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+          </svg>
+          Back
+        </a>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Controllable Generation Demo</h1>
+        <p class="mt-3 text-base text-gray-600 max-w-3xl mx-auto">Adjust the sliders to change the musical attributes and listen to the result in real-time.</p>
+      </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md">
+          <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-4">Style Attributes</h2>
+          <div class="space-y-6">
+            <div>
+              <label for="polyphony" class="flex justify-between items-center text-lg font-semibold text-gray-700">
+                Polyphony
+                <span id="polyphony-value" class="text-indigo-600 font-bold text-xl">1</span>
+              </label>
+              <input
+                id="polyphony-slider"
+                type="range"
+                min="0"
+                max="2"
+                value="1"
+                step="1"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div class="flex justify-between text-sm text-gray-500 mt-1">
+                <span>Sparse</span>
+                <span>Medium</span>
+                <span>Dense</span>
+              </div>
+            </div>
+
+            <div>
+              <label for="rhythm" class="flex justify-between items-center text-lg font-semibold text-gray-700">
+                Rhythm Intensity
+                <span id="rhythm-value" class="text-indigo-600 font-bold text-xl">1</span>
+              </label>
+              <input
+                id="rhythm-slider"
+                type="range"
+                min="0"
+                max="2"
+                value="1"
+                step="1"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div class="flex justify-between text-sm text-gray-500 mt-1">
+                <span>Simple</span>
+                <span>Medium</span>
+                <span>Complex</span>
+              </div>
+            </div>
+
+            <div>
+              <label for="sustain" class="flex justify-between items-center text-lg font-semibold text-gray-700">
+                Note Sustain
+                <span id="sustain-value" class="text-indigo-600 font-bold text-xl">1</span>
+              </label>
+              <input
+                id="sustain-slider"
+                type="range"
+                min="0"
+                max="2"
+                value="1"
+                step="1"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+              <div class="flex justify-between text-sm text-gray-500 mt-1">
+                <span>Staccato</span>
+                <span>Medium</span>
+                <span>Legato</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+          <h2 id="now-playing-title" class="text-2xl font-bold mb-4 text-gray-800">Now Playing: Style (1, 1, 1)</h2>
+          <midi-player id="player" sound-font class="w-full"></midi-player>
+          <midi-visualizer type="piano-roll" id="visualizer" class="mt-4 rounded-lg"></midi-visualizer>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // --- DOM ELEMENT REFERENCES ---
+        const dom = {
+          polyphonySlider: document.getElementById("polyphony-slider"),
+          rhythmSlider: document.getElementById("rhythm-slider"),
+          sustainSlider: document.getElementById("sustain-slider"),
+          polyphonyValue: document.getElementById("polyphony-value"),
+          rhythmValue: document.getElementById("rhythm-value"),
+          sustainValue: document.getElementById("sustain-value"),
+          player: document.getElementById("player"),
+          visualizer: document.getElementById("visualizer"),
+          nowPlayingTitle: document.getElementById("now-playing-title"),
+        };
+
+        // Link player to visualizer
+        dom.player.addVisualizer(dom.visualizer);
+
+        // --- CORE LOGIC ---
+        function updateMidiPlayer() {
+          // 1. Get current values from sliders
+          const polyphony = dom.polyphonySlider.value;
+          const rhythm = dom.rhythmSlider.value;
+          const sustain = dom.sustainSlider.value;
+
+          // 2. Update the text labels next to the sliders
+          dom.polyphonyValue.textContent = polyphony;
+          dom.rhythmValue.textContent = rhythm;
+          dom.sustainValue.textContent = sustain;
+
+          // 3. Construct the filename based on the slider values
+          const filename = `${polyphony}${rhythm}${sustain}.mid`;
+          const filePath = `./songs/style_demo/${filename}`;
+
+          // 4. Update the player source and title
+          // We check if the source has actually changed to avoid unnecessary reloads
+          if (dom.player.src !== new URL(filePath, window.location.href).href) {
+            dom.player.stop(); // Stop current playback
+            dom.player.src = filePath;
+            dom.nowPlayingTitle.textContent = `Now Playing: Style (${polyphony}, ${rhythm}, ${sustain})`;
+          }
+        }
+
+        // --- EVENT LISTENERS ---
+        // Add a single event listener to the container for efficiency
+        const controlsContainer = document.querySelector(".lg\\:col-span-1");
+        controlsContainer.addEventListener("input", (event) => {
+          if (event.target.type === "range") {
+            if (Tone.context.state !== "running") {
+              Tone.start();
+            }
+            updateMidiPlayer();
+          }
+        });
+
+        // --- INITIALIZATION ---
+        // Load the default MIDI file (111.mid) when the page loads
+        updateMidiPlayer();
+      });
+    </script>
+  </body>
+</html>
