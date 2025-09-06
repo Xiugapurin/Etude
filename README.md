@@ -52,9 +52,9 @@ conda deactivate
 Download the pre-trained model checkpoints and place them in their respective directories.
 
 ```bash
-  wget -O checkpoints.zip "https://github.com/Xiugapurin/Etude/releases/download/latest/checkpoints.zip"
-  unzip checkpoints.zip
-  rm checkpoints.zip
+wget -O checkpoints.zip "https://github.com/Xiugapurin/Etude/releases/download/latest/checkpoints.zip"
+unzip checkpoints.zip
+rm checkpoints.zip
 ```
 
 After downloading checkpoints, verify that the files have been placed correctly. Your project's `checkpoints/` directory should have the following structure:
