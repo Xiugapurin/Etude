@@ -187,8 +187,8 @@ You can use flags to run only specific parts of the pipeline, which is useful fo
 Use the `--start-from` flag to begin execution at a specific stage:
 
 ```bash
-# Skip the 'download' stage and start from 'process'
-python scripts/prepare_dataset.py --start-from process
+# Skip the 'download' stage and start from 'preprocess'
+python scripts/prepare_dataset.py --start-from preprocess
 ```
 
 Use the `--run-only` flag to execute only a single stage:
