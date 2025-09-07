@@ -219,6 +219,6 @@ To test your new model, remember to update the `configs/inference_config.yaml` f
 decoder:
   model_path: "outputs/train/your_run_id/latest.pth"
   config_path: "outputs/train/your_run_id/etude_decoder_config.json"
-  vocab_path: "dataset/tokenized/vocab.json"
+  vocab_path: "dataset/vocab.json"
   # ...
 ```
