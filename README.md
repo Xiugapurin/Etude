@@ -5,7 +5,7 @@ This project is an academic research framework for controllable piano cover gene
 The core of the project is the **Decode** stage, which utilizes a Transformer-based model to generate piano cover based on musical context and user-defined attributes. The **Extract** and **Structuralize** stages are handled by pre-existing models to provide the necessary input for the decoder.
 
 - [Demo Page](https://xiugapurin.github.io/Etude/)
-- [Paper (under review)](#)
+- [Paper](https://arxiv.org/abs/2509.16522)
 
 ## Requirements
 
