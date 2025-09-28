@@ -1,11 +1,7 @@
-============================================================
-Project License Information
-============================================================
+# Project License Information
 
 This project is released under a dual-license system. The source code and the
 pre-trained models are governed by separate licenses as described below.
-
----
 
 ## Part 1: Source Code License (MIT License)
 
@@ -15,7 +11,7 @@ The full text of the MIT License is as follows:
 
 MIT License
 
-Copyright (c) [2025] [Xiugapurin]
+Copyright (c) 2025 Xiugapurin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -34,8 +30,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
 
 ## Part 2: Pre-trained Model & Checkpoint License (CC BY-NC-SA 4.0)
 
