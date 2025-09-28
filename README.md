@@ -225,3 +225,23 @@ decoder:
   vocab_path: "dataset/vocab.json"
   # ...
 ```
+
+---
+
+## License
+
+This project is released under a dual-license system.
+
+### Source Code
+
+The **source code** of this project is licensed under the **MIT License**. You can find the full license text in the `LICENSE` file at the root of this repository.
+
+### Pre-trained Models & Checkpoints
+
+All pre-trained model checkpoints (files ending in `.pth`, `.pkl`, etc.) located in the `checkpoints/` directory are made available under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)**.
+
+[![CC BY-NC-SA 4.0](https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+This means you are free to share and adapt these models for **non-commercial research and artistic purposes**, provided you give appropriate credit and distribute any derivative works under the same license.
+
+**Use of the pre-trained models for commercial purposes is strictly prohibited under this license.** For inquiries about commercial licensing, please contact the project owner.
