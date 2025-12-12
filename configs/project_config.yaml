@@ -1,6 +1,14 @@
 # Configuration for the project environment.
 
-# Names of the isolated conda environments.
+# Environment settings
+# Note: Since we now use a unified environment with Demucs (replacing Spleeter)
+# and custom beat tracking (replacing madmom), separate conda environments
+# are no longer required for macOS compatibility.
 env:
+  # These are kept for backward compatibility but are no longer used
+  # when running on macOS with the unified environment
   spleeter_env_name: "py38_spleeter"
   madmom_env_name: "py39_madmom"
+
+  # Set to true to use the unified environment (recommended for macOS)
+  use_unified_env: true

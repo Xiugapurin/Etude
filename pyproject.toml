@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "etude"
+version = "0.1.0"
+description = "A controllable piano cover generation framework"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10,<3.13"
+authors = [
+    {name = "Xiugapurin"}
+]
+keywords = ["music", "piano", "cover", "generation", "deep-learning", "transformer"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Core ML frameworks
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "transformers>=4.30.0",
+
+    # Audio processing
+    "librosa>=0.10.0",
+    "demucs>=4.0.0",
+
+    # MIDI processing
+    "mido>=1.3.0",
+    "pretty_midi>=0.2.10",
+
+    # Music analysis
+    "synctoolbox>=1.3.0",
+
+    # Utilities
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "tqdm>=4.65.0",
+    "PyYAML>=6.0",
+    "yt-dlp>=2023.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://xiugapurin.github.io/Etude/"
+Repository = "https://github.com/Xiugapurin/Etude"
+Paper = "https://arxiv.org/abs/2509.16522"
+
+[project.scripts]
+etude-infer = "infer:main"
+etude-prepare = "prepare:main"
+etude-train = "train:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["etude*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

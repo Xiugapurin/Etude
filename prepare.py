@@ -73,8 +73,6 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     (beat_pred.json, tempo.json, transcription.json).
     """
     print("\n" + "="*25 + " Stage 2: Preprocessing " + "="*25)
-    
-    # TODO: Skip already preprocessed directories
 
     raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
@@ -82,6 +80,10 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
 
     with open("configs/project_config.yaml", 'r') as f:
         project_config = yaml.safe_load(f)
+
+    use_unified_env = project_config.get('env', {}).get('use_unified_env', False)
+    if verbose:
+        print(f"[INFO] Using unified environment: {use_unified_env}")
 
     with open(config['preprocess']['hft_transformer']['feature_config_path'], 'r') as f:
         hft_feature_config = json.load(f)
@@ -129,22 +131,39 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         else:
             if verbose:
                 print(f"\n    > Processing beats for {song_name}...")
-            
-            spleeter_cmd = [
-                "conda", "run", "-n", project_config['env']['spleeter_env_name'],
-                "python", "scripts/run_separation.py",
-                "--input", str(origin_wav), "--output", str(sep_npy_path)
-            ]
-            subprocess.run(spleeter_cmd, check=True, capture_output=True)
 
-            beat_detection_cmd = [
-                "conda", "run", "-n", project_config['env']['madmom_env_name'],
-                "python", "scripts/run_beat_detection.py",
-                "--input_npy", str(sep_npy_path),
-                "--output_json", str(beat_pred_path),
-                "--model_path", config['preprocess']['beat_model_path'],
-                "--config_path", config['preprocess']['config_path']
-            ]
+            if use_unified_env:
+                # Use unified environment (macOS compatible)
+                separation_cmd = [
+                    sys.executable, "scripts/run_separation.py",
+                    "--input", str(origin_wav),
+                    "--output", str(sep_npy_path)
+                ]
+                beat_detection_cmd = [
+                    sys.executable, "scripts/run_beat_detection.py",
+                    "--input_npy", str(sep_npy_path),
+                    "--output_json", str(beat_pred_path),
+                    "--model_path", config['preprocess']['beat_model_path'],
+                    "--config_path", config['preprocess']['config_path']
+                ]
+            else:
+                # Use separate conda environments (Linux/original setup)
+                separation_cmd = [
+                    "conda", "run", "-n", project_config['env']['spleeter_env_name'],
+                    "python", "scripts/run_separation.py",
+                    "--input", str(origin_wav),
+                    "--output", str(sep_npy_path)
+                ]
+                beat_detection_cmd = [
+                    "conda", "run", "-n", project_config['env']['madmom_env_name'],
+                    "python", "scripts/run_beat_detection.py",
+                    "--input_npy", str(sep_npy_path),
+                    "--output_json", str(beat_pred_path),
+                    "--model_path", config['preprocess']['beat_model_path'],
+                    "--config_path", config['preprocess']['config_path']
+                ]
+
+            subprocess.run(separation_cmd, check=True, capture_output=True)
             subprocess.run(beat_detection_cmd, check=True, capture_output=True)
             
             beat_analyzer = BeatAnalyzer(verbose=verbose)

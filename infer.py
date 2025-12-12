@@ -27,15 +27,23 @@ class InferencePipeline:
 
         self.device = config['general']['device']
         if self.device == 'auto':
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
+
+        self.use_unified_env = self.project_config.get('env', {}).get('use_unified_env', False)
 
         self.output_dir = Path(config['general']['output_dir'])
         self.work_dir = self.output_dir / "temp"
-        
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        
+
         print(f"[INFO] Device: {self.device}")
+        print(f"[INFO] Using unified environment: {self.use_unified_env}")
         print(f"[INFO] Final outputs will be saved to: {self.output_dir.resolve()}")
         print(f"[INFO] Intermediate files are stored in: {self.work_dir.resolve()}")
 
@@ -86,18 +94,42 @@ class InferencePipeline:
     def _run_stage2_structuralize(self, audio_path: Path):
         """Runs the beat detection and tempo analysis process."""
         print("\n[STAGE 2] Structuralizing tempo information.")
-        spleeter_cmd = [ "conda", "run", "-n", self.project_config['env']['spleeter_env_name'],
-                         "python", "scripts/run_separation.py",
-                         "--input", str(audio_path), "--output", str(self.work_dir / "sep.npy") ]
-        print("    > Running source separation for beat detection...")
-        self._run_command(spleeter_cmd)
 
-        beat_detection_cmd = [ "conda", "run", "-n", self.project_config['env']['madmom_env_name'],
-                               "python", "scripts/run_beat_detection.py",
-                               "--input_npy", str(self.work_dir / "sep.npy"),
-                               "--output_json", str(self.work_dir / "beat_pred.json"),
-                               "--model_path", self.config['structuralize']['beat_model_path'],
-                               "--config_path", self.config['structuralize']['config_path'] ]
+        if self.use_unified_env:
+            # Use unified environment (macOS compatible)
+            separation_cmd = [
+                sys.executable, "scripts/run_separation.py",
+                "--input", str(audio_path),
+                "--output", str(self.work_dir / "sep.npy"),
+                "--device", self.device
+            ]
+            beat_detection_cmd = [
+                sys.executable, "scripts/run_beat_detection.py",
+                "--input_npy", str(self.work_dir / "sep.npy"),
+                "--output_json", str(self.work_dir / "beat_pred.json"),
+                "--model_path", self.config['structuralize']['beat_model_path'],
+                "--config_path", self.config['structuralize']['config_path']
+            ]
+        else:
+            # Use separate conda environments (Linux/original setup)
+            separation_cmd = [
+                "conda", "run", "-n", self.project_config['env']['spleeter_env_name'],
+                "python", "scripts/run_separation.py",
+                "--input", str(audio_path),
+                "--output", str(self.work_dir / "sep.npy")
+            ]
+            beat_detection_cmd = [
+                "conda", "run", "-n", self.project_config['env']['madmom_env_name'],
+                "python", "scripts/run_beat_detection.py",
+                "--input_npy", str(self.work_dir / "sep.npy"),
+                "--output_json", str(self.work_dir / "beat_pred.json"),
+                "--model_path", self.config['structuralize']['beat_model_path'],
+                "--config_path", self.config['structuralize']['config_path']
+            ]
+
+        print("    > Running source separation for beat detection...")
+        self._run_command(separation_cmd)
+
         print("    > Running beat detection...")
         self._run_command(beat_detection_cmd)
 
