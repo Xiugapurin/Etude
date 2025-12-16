@@ -32,13 +32,17 @@ def separate_and_extract_features(input_path: str, output_path: str, device: str
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Determine device
+    # Note: MPS has limitations with large convolutions (Output channels > 65536)
+    # so we fall back to CPU for Demucs on Apple Silicon
     if device == "auto":
         if torch.cuda.is_available():
             device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
         else:
+            # MPS is not well supported for Demucs due to conv1d limitations
             device = "cpu"
+    elif device == "mps":
+        print("    > Warning: MPS has limitations with Demucs, falling back to CPU")
+        device = "cpu"
     print(f"    > Using device: {device}")
 
     try:
@@ -81,15 +85,21 @@ def separate_and_extract_features(input_path: str, output_path: str, device: str
         # Select 5 stems to match original spleeter output format
         # Spleeter 5stems: vocals, drums, bass, piano, other
         # htdemucs_6s: drums(0), bass(1), other(2), vocals(3), guitar(4), piano(5)
-        # We'll use: vocals(3), drums(0), bass(1), piano(5), other(2)
-        stem_indices = [3, 0, 1, 5, 2]  # vocals, drums, bass, piano, other
-        stem_names = ["vocals", "drums", "bass", "piano", "other"]
+        # Note: Spleeter's "other" includes guitar, so we need to merge other(2) + guitar(4)
+        stem_configs = [
+            ("vocals", [3]),        # vocals
+            ("drums", [0]),         # drums
+            ("bass", [1]),          # bass
+            ("piano", [5]),         # piano
+            ("other", [2, 4]),      # other + guitar (to match Spleeter's "other")
+        ]
 
         print("    > Converting each stem to a dB Mel Spectrogram...")
         processed_spectrograms = []
 
-        for idx, name in zip(stem_indices, stem_names):
-            stem_waveform = sources[idx]  # (channels, samples)
+        for _, indices in stem_configs:
+            # Merge multiple stems if needed (e.g., other + guitar)
+            stem_waveform = sum(sources[idx] for idx in indices)  # (channels, samples)
             # Convert to mono by averaging channels
             stem_mono = stem_waveform.mean(dim=0).cpu().numpy()
 

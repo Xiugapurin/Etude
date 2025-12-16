@@ -1,6 +1,7 @@
 # infer.py
 
 import sys
+import json
 import yaml
 import shutil
 import argparse
@@ -171,6 +172,14 @@ class InferencePipeline:
             final_midi_path = self.output_dir / f"{final_filename}.mid"
             tokenizer.note_to_midi(final_notes, final_midi_path)
             print(f"[INFO] Final MIDI saved to: {final_midi_path.resolve()}")
+
+            # print("    > Generating MusicXML score.")
+            # final_score_path = self.output_dir / f"{final_filename}.musicxml"
+            # tokenizer.decode_to_score(
+            #     events=generated_events,
+            #     output_path=final_score_path,
+            #     title="Piano Cover"
+            # )
         else:
             print("[WARN] Model generated an empty sequence.")
 

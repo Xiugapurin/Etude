@@ -4,7 +4,8 @@ import sys
 import json
 from pathlib import Path
 from collections import defaultdict
-from typing import Union, Optional
+from typing import Union, Optional, List, Tuple
+from fractions import Fraction
 
 import numpy as np
 import pretty_midi
@@ -523,3 +524,263 @@ class TinyREMITokenizer:
 
         midi.instruments.append(instrument)
         midi.write(str(output_path))
+
+    def decode_to_score(
+        self,
+        events: List[Event],
+        output_path: Union[str, Path],
+        title: str = "Piano Cover"
+    ) -> None:
+        """
+        Converts decoded events to a MusicXML score using music21.
+
+        This method:
+        1. Separates notes into left/right hand parts based on pitch
+        2. Groups simultaneous notes (same pos) into chords
+        3. Calculates note durations based on gap to next chord
+        4. Fills gaps with appropriate rests using greedy algorithm
+        5. Handles time signature and tempo changes per measure
+
+        Args:
+            events: List of Event objects from decode
+            output_path: Path to save the MusicXML file
+            title: Title for the score (default: "Piano Cover")
+        """
+        try:
+            from music21 import stream, note, chord, meter, tempo, clef, instrument, metadata, duration
+        except ImportError:
+            print("[ERROR] music21 is required for decode_to_score. Install with: pip install music21", file=sys.stderr)
+            return
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Allowed note durations in quarter notes
+        ALLOWED_DURATIONS = [Fraction(8), Fraction(4), Fraction(3), Fraction(2), Fraction(3, 2),
+                            Fraction(1), Fraction(3, 4), Fraction(1, 2), Fraction(1, 4)]
+
+        def _get_valid_duration(target_duration: Fraction) -> Fraction:
+            """Find the largest allowed duration that doesn't exceed target."""
+            for d in ALLOWED_DURATIONS:
+                if d <= target_duration:
+                    return d
+            return Fraction(1, 4)  # minimum duration
+
+        def _fill_with_rests(gap: Fraction) -> List[Fraction]:
+            """Fill a gap with rests using greedy algorithm."""
+            rests = []
+            remaining = gap
+            while remaining > 0:
+                rest_dur = _get_valid_duration(remaining)
+                rests.append(rest_dur)
+                remaining -= rest_dur
+                if remaining < Fraction(1, 16):  # Prevent floating point issues
+                    break
+            return rests
+
+        def _separate_hands(notes_with_pos: List[dict]) -> Tuple[List[dict], List[dict]]:
+            """
+            Separate notes into right hand (treble) and left hand (bass) parts.
+            Uses pitch-based split: notes >= 60 (middle C) go to right hand.
+            """
+            right_hand = []
+            left_hand = []
+
+            for note_data in notes_with_pos:
+                if note_data['pitch'] >= 60:
+                    right_hand.append(note_data)
+                else:
+                    left_hand.append(note_data)
+
+            return right_hand, left_hand
+
+        def _group_by_measure_and_pos(notes: List[dict]) -> dict:
+            """Group notes by measure index and position."""
+            grouped = defaultdict(lambda: defaultdict(list))
+            for n in notes:
+                grouped[n['measure_idx']][n['pos_idx']].append(n)
+            return grouped
+
+        def _create_part_for_hand(
+            hand_notes: List[dict],
+            hand_name: str,
+            clef_type: str
+        ) -> stream.Part:
+            """Create a music21 Part for one hand."""
+            part = stream.Part()
+            part.partName = hand_name
+
+            # Set instrument
+            piano = instrument.Piano()
+            part.insert(0, piano)
+
+            # Group notes by measure and position
+            grouped = _group_by_measure_and_pos(hand_notes)
+
+            # Process each measure
+            for m_idx, measure_info in enumerate(self.global_measures):
+                m = stream.Measure(number=m_idx + 1)
+
+                # Add clef at first measure
+                if m_idx == 0:
+                    if clef_type == 'treble':
+                        m.append(clef.TrebleClef())
+                    else:
+                        m.append(clef.BassClef())
+
+                # Add time signature if it changes or at first measure
+                time_sig = measure_info.get('time_sig', 4)
+                if m_idx == 0 or (m_idx > 0 and self.global_measures[m_idx - 1].get('time_sig', 4) != time_sig):
+                    m.append(meter.TimeSignature(f'{time_sig}/4'))
+
+                # Add tempo if it changes or at first measure
+                bpm = round(measure_info.get('bpm', 120))
+                if m_idx == 0 or (m_idx > 0 and round(self.global_measures[m_idx - 1].get('bpm', 120)) != bpm):
+                    m.append(tempo.MetronomeMark(number=bpm))
+
+                # Get chords for this measure (sorted by position)
+                measure_chords = grouped.get(m_idx, {})
+                sorted_positions = sorted(measure_chords.keys())
+
+                beats_per_measure = Fraction(time_sig)  # in quarter notes
+                current_offset = Fraction(0)
+
+                for i, pos_idx in enumerate(sorted_positions):
+                    chord_notes = measure_chords[pos_idx]
+
+                    # Calculate position in quarter notes
+                    b_idx, b_rel_pos = self._parse_pos_idx(pos_idx)
+                    pos_in_quarters = Fraction(b_idx) + Fraction(b_rel_pos).limit_denominator(12)
+
+                    # Fill gap before this chord with rests
+                    if pos_in_quarters > current_offset:
+                        gap = pos_in_quarters - current_offset
+                        for rest_dur in _fill_with_rests(gap):
+                            r = note.Rest()
+                            r.duration = duration.Duration(float(rest_dur))
+                            m.append(r)
+                        current_offset = pos_in_quarters
+
+                    # Calculate duration: gap to next chord or end of measure
+                    if i + 1 < len(sorted_positions):
+                        next_pos_idx = sorted_positions[i + 1]
+                        next_b_idx, next_b_rel_pos = self._parse_pos_idx(next_pos_idx)
+                        next_pos_in_quarters = Fraction(next_b_idx) + Fraction(next_b_rel_pos).limit_denominator(12)
+                        gap_to_next = next_pos_in_quarters - pos_in_quarters
+                    else:
+                        gap_to_next = beats_per_measure - pos_in_quarters
+
+                    chord_duration = _get_valid_duration(gap_to_next)
+
+                    # Create chord or single note
+                    pitches = [n['pitch'] for n in chord_notes]
+                    if len(pitches) == 1:
+                        n = note.Note(pitches[0])
+                        n.duration = duration.Duration(float(chord_duration))
+                        m.append(n)
+                    else:
+                        c = chord.Chord(pitches)
+                        c.duration = duration.Duration(float(chord_duration))
+                        m.append(c)
+
+                    current_offset = pos_in_quarters + chord_duration
+
+                    # Fill gap between chord end and actual next position
+                    if i + 1 < len(sorted_positions):
+                        if current_offset < next_pos_in_quarters:
+                            gap = next_pos_in_quarters - current_offset
+                            for rest_dur in _fill_with_rests(gap):
+                                r = note.Rest()
+                                r.duration = duration.Duration(float(rest_dur))
+                                m.append(r)
+                            current_offset = next_pos_in_quarters
+
+                # Fill remaining space with rests (always fill to complete the measure)
+                if current_offset < beats_per_measure:
+                    gap = beats_per_measure - current_offset
+                    for rest_dur in _fill_with_rests(gap):
+                        r = note.Rest()
+                        r.duration = duration.Duration(float(rest_dur))
+                        m.append(r)
+
+                # Always add the measure to ensure left/right hand alignment
+                part.append(m)
+
+            return part
+
+        # Parse events to get notes with position and measure info
+        notes_with_info = []
+        event_idx, measure_idx, current_pos_idx = 0, 0, 0
+        current_measure = None
+
+        while event_idx < len(events):
+            event = events[event_idx]
+
+            if event.type_ == "Bar" and event.value == "BOS":
+                if measure_idx < len(self.global_measures):
+                    current_measure = self.global_measures[measure_idx]
+                measure_idx += 1
+                event_idx += 1
+                continue
+
+            if event.type_ == "Bar" and event.value == "EOS":
+                event_idx += 1
+                continue
+
+            if not current_measure:
+                event_idx += 1
+                continue
+
+            if event.type_ == "Pos":
+                current_pos_idx = event.value
+                event_idx += 1
+                continue
+
+            if event.type_ == "Grace":
+                # Skip grace notes for score (they complicate notation)
+                event_idx += 1
+                continue
+
+            if event.type_ == "Note":
+                pitch = event.value
+                # Get duration token if available
+                dur_token = 4  # default quarter note
+                if event_idx + 1 < len(events) and events[event_idx + 1].type_ == "Duration":
+                    dur_token = events[event_idx + 1].value
+                    event_idx += 2
+                else:
+                    event_idx += 1
+
+                notes_with_info.append({
+                    'pitch': pitch,
+                    'measure_idx': measure_idx - 1,  # -1 because we incremented after BOS
+                    'pos_idx': current_pos_idx,
+                    'duration_token': dur_token
+                })
+                continue
+
+            event_idx += 1
+
+        # Separate into hands
+        right_hand_notes, left_hand_notes = _separate_hands(notes_with_info)
+
+        # Create score
+        score = stream.Score()
+
+        # Add metadata
+        score.insert(0, metadata.Metadata())
+        score.metadata.title = title
+        score.metadata.composer = "Generated by Etude"
+
+        # Create parts for each hand
+        if right_hand_notes:
+            right_part = _create_part_for_hand(right_hand_notes, "Right Hand", "treble")
+            score.insert(0, right_part)
+
+        if left_hand_notes:
+            left_part = _create_part_for_hand(left_hand_notes, "Left Hand", "bass")
+            score.insert(0, left_part)
+
+        # Write to file
+        score.write('musicxml', fp=str(output_path))
+        print(f"[INFO] Score saved to: {output_path}")
