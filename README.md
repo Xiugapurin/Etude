@@ -9,27 +9,45 @@ The core of the project is the **Decode** stage, which utilizes a Transformer-ba
 
 ## Requirements
 
-- Ubuntu OS
-- GPU with at least 16GB of VRAM.
-- `ffmpeg` is required.
+- **Linux (Ubuntu)**: Recommended for production use
+- **macOS (Apple Silicon)**: Experimental support with MPS acceleration
+- GPU with at least 16GB of VRAM (CUDA) or Apple Silicon with 16GB+ unified memory (MPS)
+- `ffmpeg` is required
 
-### Environment Setup
+## Environment Setup
 
-To handle conflicting dependencies, this project requires three separate environments. We recommend using conda to manage the `spleeter` and `madmom` environments.
+### Install ffmpeg
 
-First, install the `ffmpeg` library on your system:
-
+#### Ubuntu:
 ```bash
 sudo apt-get update && sudo apt-get install ffmpeg
 ```
 
-Setup the main environment:
-
+#### macOS:
 ```bash
-pip install -r requirements.txt
+brew install ffmpeg
 ```
 
-Create the `spleeter` environment, the environment name (`py38_spleeter`) must be consistent with the one recorded in `configs/project_config.yaml`:
+### Setup the Main Environment
+
+Create a virtual environment and install dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip wheel setuptools
+pip install -e "."
+```
+
+### Beat Detection Dependencies
+
+The **Structuralize** stage requires audio source separation for beat detection. There are two backend options:
+
+#### Spleeter (Default, Recommended)
+
+**Spleeter** provides the best beat detection accuracy but requires a separate conda environment.
+
+Create the `spleeter` environment (the environment name must match `configs/project_config.yaml`):
 
 ```bash
 conda create --name py38_spleeter python=3.8.20 -y
@@ -38,17 +56,24 @@ pip install spleeter==2.3.2 librosa
 conda deactivate
 ```
 
-Create the madmom environment, the environment name (`py39_madmom`) must be consistent with the one recorded in `configs/project_config.yaml`:
+#### Demucs (Experimental)
 
-```bash
-conda create --name py39_madmom python=3.9 -y
-conda activate py39_madmom
-git clone --recursive https://github.com/CPJKU/madmom.git
-cd madmom && pip install -e . && cd ..
-pip install torch torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
-pip install PyYAML
-conda deactivate
-```
+For **macOS** users who cannot install Spleeter, **Demucs** is available as an alternative backend.
+
+> **⚠️ WARNING:** Using **Demucs** with the **Beat-Transformer** produces less accurate beat information, which may affect the quality of the final output.
+
+To use **Demucs**:
+
+1. Install the **Demucs** dependency:
+   ```bash
+   pip install -e ".[demucs]"
+   ```
+
+2. Modify `configs/project_config.yaml`:
+   ```yaml
+   env:
+     separation_backend: "demucs"  # Change from "spleeter" to "demucs"
+   ```
 
 ### Download Pre-trained Models
 

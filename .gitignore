@@ -37,3 +37,4 @@ env/
 /dataset/
 /checkpoints/
 /pretrained_models/
+/notebooks/

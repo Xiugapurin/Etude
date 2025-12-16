@@ -129,24 +129,39 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         else:
             if verbose:
                 print(f"\n    > Processing beats for {song_name}...")
-            
-            spleeter_cmd = [
-                "conda", "run", "-n", project_config['env']['spleeter_env_name'],
-                "python", "scripts/run_separation.py",
-                "--input", str(origin_wav), "--output", str(sep_npy_path)
-            ]
-            subprocess.run(spleeter_cmd, check=True, capture_output=True)
 
+            separation_backend = project_config['env'].get('separation_backend', 'spleeter')
+
+            if separation_backend == 'demucs':
+                # Demucs runs in main environment
+                separation_cmd = [
+                    sys.executable, "scripts/run_separation.py",
+                    "--input", str(origin_wav),
+                    "--output", str(sep_npy_path),
+                    "--backend", "demucs"
+                ]
+            else:
+                # Spleeter requires separate conda environment
+                separation_cmd = [
+                    "conda", "run", "-n", project_config['env']['spleeter_env_name'],
+                    "python", "scripts/run_separation.py",
+                    "--input", str(origin_wav),
+                    "--output", str(sep_npy_path),
+                    "--backend", "spleeter"
+                ]
+
+            subprocess.run(separation_cmd, check=True, capture_output=True)
+
+            # Beat detection now runs in main environment (madmom is installed)
             beat_detection_cmd = [
-                "conda", "run", "-n", project_config['env']['madmom_env_name'],
-                "python", "scripts/run_beat_detection.py",
+                sys.executable, "scripts/run_beat_detection.py",
                 "--input_npy", str(sep_npy_path),
                 "--output_json", str(beat_pred_path),
                 "--model_path", config['preprocess']['beat_model_path'],
                 "--config_path", config['preprocess']['config_path']
             ]
             subprocess.run(beat_detection_cmd, check=True, capture_output=True)
-            
+
             beat_analyzer = BeatAnalyzer(verbose=verbose)
             tempo_data = beat_analyzer.analyze(beat_pred_path)
             beat_analyzer.save_tempo_data(tempo_data, tempo_path)
