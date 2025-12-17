@@ -150,6 +150,10 @@ class EtudeLogger:
         """Enable or disable colored output."""
         self._use_color = enabled
 
+    def is_debug(self) -> bool:
+        """Check if the current log level is DEBUG."""
+        return self._level == LogLevel.DEBUG
+
     def _colorize(self, text: str, color_key: str) -> str:
         """Apply color to text if colors are enabled."""
         if self._use_color and color_key in self.COLORS:

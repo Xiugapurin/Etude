@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import torch
 
 from etude.data.extractor import AMTAPC_Extractor
+from etude.data.beat_detector import BeatDetector
 from etude.data.beat_analyzer import BeatAnalyzer
 from etude.data.tokenizer import TinyREMITokenizer
 from etude.data.vocab import Vocab
@@ -126,15 +127,19 @@ class InferencePipeline:
         logger.info("Source separation complete.")
 
         logger.step("Running beat detection")
-        beat_detection_cmd = [
-            sys.executable, "scripts/run_beat_detection.py",
-            "--input_npy", str(self.work_dir / "sep.npy"),
-            "--output_json", str(self.work_dir / "beat_pred.json"),
-            "--model_path", self.config['structuralize']['beat_model_path'],
-            "--config_path", self.config['structuralize']['config_path']
-        ]
         logger.substep("Detecting beats and downbeats...")
-        self._run_command(beat_detection_cmd)
+        with open(self.config['structuralize']['config_path'], 'r') as f:
+            beat_config = yaml.safe_load(f)['beat_detection']
+        beat_detector = BeatDetector(
+            config=beat_config,
+            model_path=self.config['structuralize']['beat_model_path'],
+            device=self.device
+        )
+        beat_detector.detect(
+            input_npy_path=self.work_dir / "sep.npy",
+            output_json_path=self.work_dir / "beat_pred.json",
+            cleanup_input=True
+        )
         logger.info("Beat detection complete.")
 
         logger.step("Generating tempo structure")

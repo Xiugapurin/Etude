@@ -13,6 +13,7 @@ from tqdm import tqdm
 from etude.utils.download import download_audio_from_url
 from etude.utils.logger import logger
 from etude.models.hft_transformer import HFT_Transformer
+from etude.data.beat_detector import BeatDetector
 from etude.data.beat_analyzer import BeatAnalyzer
 from etude.data.aligner import AudioAligner
 from etude.utils.preprocess import (
@@ -106,6 +107,16 @@ def run_stage_2_preprocess(config: dict):
     )
     logger.info("Transcription model loaded.")
 
+    logger.step("Loading beat detection model")
+    with open(config['preprocess']['config_path'], 'r') as f:
+        beat_config = yaml.safe_load(f)['beat_detection']
+
+    beat_detector = BeatDetector(
+        config=beat_config,
+        model_path=config['preprocess']['beat_model_path']
+    )
+    logger.info("Beat detection model loaded.")
+
     song_dirs = sorted([d for d in raw_dir.iterdir() if d.is_dir()])
 
     logger.step("Processing songs")
@@ -163,14 +174,11 @@ def run_stage_2_preprocess(config: dict):
 
             subprocess.run(separation_cmd, check=True, capture_output=True)
 
-            beat_detection_cmd = [
-                sys.executable, "scripts/run_beat_detection.py",
-                "--input_npy", str(sep_npy_path),
-                "--output_json", str(beat_pred_path),
-                "--model_path", config['preprocess']['beat_model_path'],
-                "--config_path", config['preprocess']['config_path']
-            ]
-            subprocess.run(beat_detection_cmd, check=True, capture_output=True)
+            beat_detector.detect(
+                input_npy_path=sep_npy_path,
+                output_json_path=beat_pred_path,
+                cleanup_input=True
+            )
 
             beat_analyzer = BeatAnalyzer()
             tempo_data = beat_analyzer.analyze(beat_pred_path)

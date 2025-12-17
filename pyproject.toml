@@ -34,7 +34,7 @@ dependencies = [
 
     # Audio processing
     "librosa>=0.10.0",
-    "madmom @ git+https://github.com/CPJKU/madmom.git",
+    "madmom @ git+https://github.com/CPJKU/madmom.git@27f032e8947204902c675e5e341a3faf5dc86dae",
 
     # MIDI processing
     "mido>=1.3.0",
