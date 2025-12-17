@@ -81,7 +81,7 @@ class EtudeLogger:
 
     # ANSI color codes
     COLORS = {
-        "DEBUG": "\033[36m",    # Cyan
+        "DEBUG": "\033[35m",    # Purple
         "INFO": "\033[94m",     # Blue
         "WARN": "\033[93m",     # Yellow
         "ERROR": "\033[91m",    # Red
