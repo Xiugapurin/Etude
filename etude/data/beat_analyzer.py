@@ -17,14 +17,8 @@ class BeatAnalyzer:
     and measure information for different regions of a song.
     """
 
-    def __init__(self, verbose: bool = False):
-        """
-        Initializes the BeatAnalyzer.
-        
-        Args:
-            verbose (bool): If True, prints detailed debugging information.
-        """
-        self.verbose = verbose
+    def __init__(self):
+        """Initializes the BeatAnalyzer."""
         self.beat_pred = []
         self.downbeat_pred = []
 
@@ -94,10 +88,9 @@ class BeatAnalyzer:
                 "start": region['start_time'],
                 "downbeats": region['downbeats']
             })
-        
-        if self.verbose:
-            logger.debug(f"Tempo analysis complete. Found {len(final_output)} regions.")
-        
+
+        logger.debug(f"Tempo analysis complete. Found {len(final_output)} regions.")
+
         return final_output
 
     def save_tempo_data(self, tempo_data: List[Dict], output_path: Union[str, Path]):
@@ -107,8 +100,7 @@ class BeatAnalyzer:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(tempo_data, f, indent=4)
 
-        if self.verbose:
-            logger.debug(f"Tempo data saved successfully to: {output_path}")
+        logger.debug(f"Tempo data saved to: {output_path}")
 
     def _remove_close_beats(self, beat_threshold: float = 0.1) -> List[float]:
         """Filters out beat predictions that are too close to a downbeat."""

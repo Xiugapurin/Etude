@@ -51,8 +51,8 @@ Use these methods inside tqdm loops to avoid breaking progress bar display:
 
 ## Environment Variables
 
-    ETUDE_LOG_LEVEL: DEBUG, INFO, WARN, ERROR (default: INFO)
-    ETUDE_NO_COLOR: Set to disable colored output
+    LOG_LEVEL: DEBUG, INFO, WARN, ERROR (default: INFO)
+    NO_COLOR: Set to disable colored output
 """
 
 import os
@@ -107,7 +107,7 @@ class EtudeLogger:
 
     def _get_level_from_env(self) -> LogLevel:
         """Get log level from environment variable."""
-        level_str = os.environ.get("ETUDE_LOG_LEVEL", "INFO").upper()
+        level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
         level_map = {
             "DEBUG": LogLevel.DEBUG,
             "INFO": LogLevel.INFO,
@@ -120,7 +120,7 @@ class EtudeLogger:
     def _should_use_color(self) -> bool:
         """Determine if colored output should be used."""
         # Disable color if explicitly requested
-        if os.environ.get("ETUDE_NO_COLOR"):
+        if os.environ.get("NO_COLOR"):
             return False
         # Disable color if not a TTY (e.g., piped output)
         if not sys.stdout.isatty():

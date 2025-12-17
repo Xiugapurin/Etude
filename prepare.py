@@ -24,7 +24,7 @@ from etude.data.extractor import AMTAPC_Extractor
 from etude.data.tokenizer import TinyREMITokenizer
 from etude.data.vocab import Vocab, PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN
 
-def run_stage_1_download(config: dict, verbose: bool = False):
+def run_stage_1_download(config: dict):
     """
     Handles Stage 1: Downloading all raw audio files from the source CSV.
     """
@@ -82,7 +82,7 @@ def run_stage_1_download(config: dict, verbose: bool = False):
         logger.info("Download complete.")
 
 
-def run_stage_2_preprocess(config: dict, verbose: bool = False):
+def run_stage_2_preprocess(config: dict):
     """
     Handles Stage 2: Generates all intermediate analysis files
     (beat_pred.json, tempo.json, transcription.json).
@@ -102,8 +102,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
 
     transcriber = HFT_Transformer(
         config=hft_feature_config,
-        model_path=config['preprocess']['hft_transformer']['model_path'],
-        verbose=verbose
+        model_path=config['preprocess']['hft_transformer']['model_path']
     )
     logger.info("Transcription model loaded.")
 
@@ -120,13 +119,11 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         transcription_json = output_song_dir / "transcription.json"
 
         if transcription_json.exists():
-            if verbose:
-                logger.progress_skip(f"{song_name}: transcription.json already exists.")
+            logger.debug(f"{song_name}: transcription.json already exists.")
         elif not cover_wav.exists():
             logger.progress_warn(f"Skipping {song_name}: cover.wav not found.")
         else:
-            if verbose:
-                logger.substep(f"Transcribing {song_name}...")
+            logger.debug(f"Transcribing {song_name}...")
             transcriber.transcribe(
                 input_wav_path=cover_wav,
                 output_json_path=transcription_json,
@@ -140,13 +137,11 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         tempo_path = output_song_dir / "tempo.json"
 
         if tempo_path.exists():
-            if verbose:
-                logger.progress_skip(f"{song_name}: tempo.json already exists.")
+            logger.debug(f"{song_name}: tempo.json already exists.")
         elif not origin_wav.exists():
             logger.progress_warn(f"Skipping {song_name}: origin.wav not found.")
         else:
-            if verbose:
-                logger.substep(f"Detecting beats for {song_name}...")
+            logger.debug(f"Detecting beats for {song_name}...")
 
             separation_backend = project_config['env'].get('separation_backend', 'spleeter')
 
@@ -177,14 +172,14 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
             ]
             subprocess.run(beat_detection_cmd, check=True, capture_output=True)
 
-            beat_analyzer = BeatAnalyzer(verbose=verbose)
+            beat_analyzer = BeatAnalyzer()
             tempo_data = beat_analyzer.analyze(beat_pred_path)
             beat_analyzer.save_tempo_data(tempo_data, tempo_path)
 
     logger.info("Preprocessing complete.")
 
 
-def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
+def run_stage_3_align_and_filter(config: dict):
     """
     Handles Stage 3: Aligns transcriptions, filters based on wp-std,
     and prepares the final synced data.
@@ -199,7 +194,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
     wp_std_threshold = config['align_and_filter']['wp_std_threshold']
 
     logger.step("Initializing audio aligner")
-    aligner = AudioAligner(verbose=verbose)
+    aligner = AudioAligner()
     logger.info("Audio aligner initialized.")
 
     song_dirs = sorted([d for d in processed_dir.iterdir() if d.is_dir()])
@@ -216,8 +211,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
 
         final_cover_json = synced_dir / song_name / "cover.json"
         if final_cover_json.exists():
-            if verbose:
-                logger.progress_skip(f"{song_name}: Already processed.")
+            logger.debug(f"{song_name}: Already processed.")
             final_metadata.append({"dir_name": song_name, "status": "kept"})
             continue
 
@@ -225,8 +219,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
             logger.progress_warn(f"Skipping {song_name}: Missing required input files.")
             continue
 
-        if verbose:
-            logger.substep(f"Aligning {song_name}...")
+        logger.debug(f"Aligning {song_name}...")
 
         align_result = aligner.align(origin_wav, cover_wav, song_dir)
         if not align_result:
@@ -238,12 +231,10 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
         time_map = create_time_map_from_downbeats(downbeats, align_result)
 
         wp_std = compute_wp_std(time_map)
-        if verbose:
-            logger.substep(f"WP-Std: {wp_std:.4f}")
+        logger.debug(f"WP-Std: {wp_std:.4f}")
 
         if wp_std > wp_std_threshold:
-            if verbose:
-                logger.substep(f"Filtered out: WP-Std exceeds threshold ({wp_std_threshold}).")
+            logger.debug(f"Filtered out: WP-Std exceeds threshold ({wp_std_threshold}).")
             continue
 
         with open(transcription_path, 'r') as f:
@@ -265,7 +256,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
     logger.info(f"Align & filter complete. Metadata saved to: {metadata_path}")
 
 
-def run_stage_4_extract(config: dict, verbose: bool = False):
+def run_stage_4_extract(config: dict):
     """
     Handles Stage 4: Extracts notes from the ORIGINAL song (origin.wav) to be used
     as the condition for the decoder model.
@@ -302,16 +293,14 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
         output_json_path = output_base_dir / song_name / "extract.json"
 
         if output_json_path.exists():
-            if verbose:
-                logger.progress_skip(f"{song_name}: extract.json already exists.")
+            logger.debug(f"{song_name}: extract.json already exists.")
             continue
 
         if not origin_wav_path.exists():
             logger.progress_warn(f"Skipping {song_name}: origin.wav not found.")
             continue
 
-        if verbose:
-            logger.substep(f"Extracting {song_name}...")
+        logger.debug(f"Extracting {song_name}...")
 
         extractor.extract(
             audio_path=str(origin_wav_path),
@@ -321,7 +310,7 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
     logger.info("Condition note extraction complete.")
 
 
-def run_stage_5_tokenize(config: dict, verbose: bool = False):
+def run_stage_5_tokenize(config: dict):
     """
     Handles Stage 5: Tokenizes the filtered data, builds a vocabulary if needed,
     and saves the final sequences for training.
@@ -430,8 +419,6 @@ def main():
         "--run-only", type=str, choices=['download', 'preprocess', 'align', 'extract', 'tokenize'],
         help="Run only a single specified stage."
     )
-    parser.add_argument("--verbose", action="store_true", help="Enable detailed logging output for all stages.")
-
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
@@ -444,23 +431,22 @@ def main():
     for i, stage in enumerate(pipeline_stages):
         if i < start_index:
             continue
-        
+
         if args.run_only and args.run_only != stage:
             continue
 
         if stage == 'download':
-            run_stage_1_download(config, verbose=args.verbose)
+            run_stage_1_download(config)
         elif stage == 'preprocess':
-            run_stage_2_preprocess(config, verbose=args.verbose)
+            run_stage_2_preprocess(config)
         elif stage == 'align':
-            run_stage_3_align_and_filter(config, verbose=args.verbose)
+            run_stage_3_align_and_filter(config)
         elif stage == 'extract':
-            run_stage_4_extract(config, verbose=args.verbose)
+            run_stage_4_extract(config)
         elif stage == 'tokenize':
-            run_stage_5_tokenize(config, verbose=args.verbose)
+            run_stage_5_tokenize(config)
 
-    if args.verbose:
-        logger.success("Data preparation script finished.")
+    logger.success("Data preparation script finished.")
 
 if __name__ == "__main__":
     main()

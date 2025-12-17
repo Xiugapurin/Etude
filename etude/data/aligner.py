@@ -28,7 +28,7 @@ class AudioAligner:
     interface for obtaining the warping path and handles caching of results.
     """
 
-    def __init__(self, fs: int = 22050, feature_rate: int = 50, verbose: bool = False):
+    def __init__(self, fs: int = 22050, feature_rate: int = 50):
         """
         Initializes the AudioAligner with configuration parameters.
 
@@ -38,7 +38,6 @@ class AudioAligner:
         """
         self.fs = fs
         self.feature_rate = feature_rate
-        self.verbose = verbose
         
         # --- Default parameters for MRMSDTW ---
         self.step_weights = np.array([1.5, 1.5, 2.0])
@@ -63,9 +62,8 @@ class AudioAligner:
             return cached_result
         
         # Step 2: Cache miss. Fallback to full alignment, which requires .wav files.
-        if self.verbose:
-            logger.substep(f"No valid cache for '{version_key}'. Attempting alignment from .wav files.")
-        
+        logger.debug(f"No valid cache for '{version_key}'. Attempting alignment from .wav files.")
+
         if not Path(origin_audio_path).exists() or not Path(cover_audio_path).exists():
             return None 
 
@@ -171,6 +169,5 @@ class AudioAligner:
         
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump(all_data, f, indent=4)
-        
-        if self.verbose:
-            logger.substep(f"Rich alignment data for '{version_key}' saved to cache: {cache_path}")
+
+        logger.debug(f"Alignment data for '{version_key}' saved to cache: {cache_path}.")

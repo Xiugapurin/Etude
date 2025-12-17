@@ -13,7 +13,6 @@ from .logger import logger
 def download_audio_from_url(
     url: str,
     output_path: Union[str, Path],
-    verbose: bool = False,
     progress_mode: bool = False
 ) -> bool:
     """
@@ -24,7 +23,6 @@ def download_audio_from_url(
         url (str): The URL of the video or audio to download.
         output_path (Union[str, Path]): The full path (including filename and extension)
                                         where the final .wav file will be saved.
-        verbose (bool): If True, log detailed progress messages.
         progress_mode (bool): If True, use tqdm-compatible logging methods.
 
     Returns:
@@ -59,8 +57,7 @@ def download_audio_from_url(
     }
 
     try:
-        if verbose:
-            logger.substep(f"Downloading from {url}...")
+        logger.debug(f"Downloading from {url}...")
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
@@ -70,8 +67,7 @@ def download_audio_from_url(
     final_output_path = output_path
 
     if final_output_path.exists() and final_output_path.stat().st_size > 0:
-        if verbose:
-            logger.info(f"Audio saved to: {final_output_path}")
+        logger.debug(f"Audio saved to: {final_output_path}")
         return True
     else:
         warn_fn("Download failed: Output file not created or is empty.")
@@ -85,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("output_path", type=str, help="Full path for the output .wav file.")
     args = parser.parse_args()
 
-    success = download_audio_from_url(args.url, args.output_path, verbose=True)
+    success = download_audio_from_url(args.url, args.output_path)
 
     if success:
         logger.success("Download complete.")

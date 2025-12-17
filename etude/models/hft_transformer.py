@@ -35,18 +35,13 @@ class HFT_Transformer:
     """
     A fully integrated transcriber based on the hFT-Transformer pipeline.
     """
-    def __init__(self, config: Dict, model_path: str, device: str = 'auto', verbose: bool = False):
-        self.verbose = verbose
-
+    def __init__(self, config: Dict, model_path: str, device: str = 'auto'):
         if device == 'auto':
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
 
         self.config = config
-        
-        if self.verbose:
-            print(f"    > Loading hFT-Transformer model from: {model_path}")
 
         with open(model_path, "rb") as f:
             self.model = CustomUnpickler(f).load()
@@ -68,10 +63,7 @@ class HFT_Transformer:
                     if hasattr(module, 'scale'):
                         module.scale = module.scale.to(self.device)
         except AttributeError as e:
-            print(f"    > [WARN] Could not perform manual device fix for sub-tensors: {e}")
-
-        if self.verbose:
-            print(f"    > hFT-Transformer model loaded successfully on device: {self.device}")
+            pass  # Some sub-tensors may not need device fix
 
     def transcribe(
         self,

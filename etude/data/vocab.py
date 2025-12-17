@@ -47,10 +47,10 @@ class Vocab:
     This class handles vocabulary creation, saving, loading, and the encoding/decoding
     of individual tokens and sequences.
     """
-    def __init__(self, special_tokens: List[str] = [PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN], verbose: bool = False):
+    def __init__(self, special_tokens: List[str] = [PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN]):
         """
         Initializes the vocabulary.
-        
+
         Args:
             special_tokens (List[str]): A list of special tokens to add first.
                                          These tokens will have fixed, low-integer IDs.
@@ -58,13 +58,11 @@ class Vocab:
         self.token_to_id: Dict[str, int] = {}
         self.id_to_token: List[str] = []
         self.special_tokens = special_tokens
-        self.verbose = verbose
 
         for token in self.special_tokens:
             self._add_token(token)
-        
-        if self.verbose:
-            logger.info(f"Initialized Vocab with special tokens: {self.special_tokens}")
+
+        logger.debug(f"Initialized Vocab with special tokens: {self.special_tokens}.")
 
     def _add_token(self, token: str) -> int:
         """Adds a token to the vocabulary if it doesn't already exist."""
@@ -83,15 +81,13 @@ class Vocab:
         Args:
             event_sequences (List[List[Event]]): A list of event sequences to build the vocabulary from.
         """
-        if self.verbose:
-            logger.substep("Building vocabulary from event sequences...")
+        logger.debug("Building vocabulary from event sequences.")
 
         for seq in event_sequences:
             for event in seq:
                 self._add_token(str(event))
 
-        if self.verbose:
-            logger.info(f"Vocabulary built with {len(self)} unique tokens.")
+        logger.debug(f"Vocabulary built with {len(self)} unique tokens.")
 
     def encode(self, token: Union[str, Event]) -> int:
         """
@@ -159,9 +155,8 @@ class Vocab:
         }
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(vocab_data, f, ensure_ascii=False, indent=2)
-        
-        if self.verbose:
-            logger.debug(f"Vocabulary saved to {filepath}")
+
+        logger.debug(f"Vocabulary saved to: {filepath}.")
     
     def encode_and_save_sequence(
             self, 

@@ -8,7 +8,6 @@ PyTorch model class (EtudeDecoder), which is built upon the GPT-NeoX architectur
 from the Hugging Face Transformers library.
 """
 
-import sys
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Union
 
@@ -20,6 +19,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from tqdm import tqdm
 
 from ..data.dataset import SRC_CLASS_ID, TGT_CLASS_ID
+from ..utils.logger import logger
 
 
 class EtudeDecoderConfig(PretrainedConfig):
@@ -224,15 +224,15 @@ class EtudeDecoder(PreTrainedModel):
 
         try:
             bar_bos_id, bar_eos_id = vocab.get_bar_bos_id(), vocab.get_bar_eos_id()
-            if bar_bos_id == -1 or bar_eos_id == -1: 
+            if bar_bos_id == -1 or bar_eos_id == -1:
                 raise ValueError("Bar tokens not in vocab.")
             num_past_xy_pairs_for_context = self.config.context_num_past_xy_pairs
         except Exception as e:
-            print(f"[ERROR] accessing vocab/config: {e}", file=sys.stderr); 
+            logger.error(f"Accessing vocab/config: {e}")
             return []
 
         if not all_x_bars or len(all_x_bars) != len(target_attributes_per_bar):
-            print("[ERROR] Condition bars mismatch with target attributes.", file=sys.stderr); 
+            logger.error("Condition bars mismatch with target attributes.")
             return []
 
         attr_key_map = {

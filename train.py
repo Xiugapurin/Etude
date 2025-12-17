@@ -53,8 +53,7 @@ class Trainer:
             max_seq_len=self.model_config.max_position_embeddings,
             data_format=self.config['data']['data_format'],
             num_attribute_bins=self.model_config.num_attribute_bins,
-            context_num_past_xy_pairs=self.model_config.context_num_past_xy_pairs,
-            verbose=False
+            context_num_past_xy_pairs=self.model_config.context_num_past_xy_pairs
         )
         self.dataloader = dataset.get_dataloader(
             self.config['training']['batch_size'],
@@ -171,7 +170,6 @@ def main():
         help="Path to the training configuration YAML file."
     )
 
-    # TODO: Provide a --verbose flag
     args = parser.parse_args()
     
     with open(args.config, 'r') as f:

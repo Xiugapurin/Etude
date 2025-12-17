@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from .vocab import Vocab
+from ..utils.logger import logger
 
 SRC_CLASS_ID = 1
 TGT_CLASS_ID = 2
@@ -47,8 +48,7 @@ class EtudeDataset(Dataset):
             tgt_suffix: str = '_tgt.npy',
             data_format: str = 'npy',
             num_attribute_bins: int = 3,
-            context_num_past_xy_pairs: int = 4,
-            verbose: bool = False
+            context_num_past_xy_pairs: int = 4
         ):
         """
         Initializes the Dataset.
@@ -62,7 +62,6 @@ class EtudeDataset(Dataset):
             data_format (str): Storage format of sequence files ('npy', 'pt', 'json').
             num_attribute_bins (int): The number of bins for quantizing musical attributes.
             context_num_past_xy_pairs (int): The number of past (X, Y) bar pairs to use as context.
-            verbose (bool): If True, prints detailed dataset statistics during initialization.
         """
         # --- Parameter Setup ---
         self.dataset_dir = Path(dataset_dir)
@@ -73,7 +72,6 @@ class EtudeDataset(Dataset):
         self.data_format = data_format
         self.num_attribute_bins = num_attribute_bins
         self.context_num_past_xy_pairs = context_num_past_xy_pairs
-        self.verbose = verbose
 
         # --- Fetch Special Token IDs from Vocabulary ---
         self.pad_id = self.vocab.get_pad_id()
@@ -87,18 +85,18 @@ class EtudeDataset(Dataset):
 
         # --- Initialization Pipeline ---
         # Phase 1: Scan files and load metadata and raw attributes for all songs.
-        print("Phase 1: Finding file pairs and collecting song metadata...")
+        logger.debug("Phase 1: Finding file pairs and collecting song metadata...")
         file_pairs = self._find_file_pairs()
         if not file_pairs:
             self._songs = []
             self.sample_map = []
-            print("Warning: No valid data file pairs found.")
+            logger.warn("No valid data file pairs found.")
             return
 
         self._songs = self._load_and_preprocess_songs(file_pairs)
         if not self._songs:
             self.sample_map = []
-            print("Warning: No valid songs could be processed.")
+            logger.warn("No valid songs could be processed.")
             return
 
         all_bar_data = [
@@ -106,20 +104,14 @@ class EtudeDataset(Dataset):
         ]
         
         # Phase 2: Calculate quantization bin edges for attributes based on global statistics.
-        print(f"Phase 2: Calculating bin edges for {self.num_attribute_bins} bins...")
+        logger.debug(f"Phase 2: Calculating bin edges for {self.num_attribute_bins} bins...")
         self.attribute_bin_edges = self._calculate_bin_edges(all_bar_data)
-        
-        if self.verbose:
-            self._print_dataset_statistics(all_bar_data)
 
         # Phase 3: Create the sample map for fast lookup in __getitem__.
-        print("Phase 3: Creating sample map for lazy loading...")
+        logger.debug("Phase 3: Creating sample map for lazy loading...")
         self._create_sample_map()
-        
-        if self.verbose and self.sample_map:
-            self._print_chunk_stats()
-            
-        print(f"\nDataset initialized. Total training samples (chunks): {len(self.sample_map)}")
+
+        logger.debug(f"Dataset initialized. Total training samples (chunks): {len(self.sample_map)}")
 
 
     def __len__(self) -> int:
@@ -152,9 +144,9 @@ class EtudeDataset(Dataset):
 
     def _find_file_pairs(self) -> List[Tuple[Path, Path]]:
         """Scans the data directory to find all valid (condition, target) file pairs."""
-        print(f"Scanning {self.dataset_dir} for data subdirectories...")
+        logger.debug(f"Scanning {self.dataset_dir} for data subdirectories...")
         potential_dirs = sorted([d for d in self.dataset_dir.iterdir() if d.is_dir() and d.name.isdigit()])
-        
+
         file_pairs = []
         for item in tqdm(potential_dirs, desc="Finding file pairs"):
              subdir_name = item.name
@@ -162,7 +154,7 @@ class EtudeDataset(Dataset):
              tgt_file = item / f"{subdir_name}{self.tgt_suffix}"
              if src_file.exists() and tgt_file.exists():
                  file_pairs.append((src_file, tgt_file))
-        print(f"Found {len(file_pairs)} valid file pairs (songs).")
+        logger.debug(f"Found {len(file_pairs)} valid file pairs (songs).")
         return file_pairs
 
     def _load_sequence(self, filepath: Path) -> List[int]:
@@ -179,7 +171,7 @@ class EtudeDataset(Dataset):
             else:
                 raise ValueError(f"Unsupported data format: {self.data_format}")
         except Exception as e:
-            print(f"Error loading {filepath}: {e}")
+            logger.warn(f"Error loading {filepath}: {e}")
             return []
 
     def _split_into_bars(self, id_sequence: List[int]) -> List[List[int]]:
@@ -471,7 +463,7 @@ class EtudeDataset(Dataset):
     def get_dataloader(self, batch_size: int, shuffle: bool = True, num_workers: int = 0, **kwargs) -> DataLoader:
         """Creates and returns a DataLoader for this dataset."""
         if not hasattr(self, 'sample_map') or not self.sample_map:
-            print("Warning: Dataset is empty, returning an empty DataLoader.")
+            logger.warn("Dataset is empty, returning an empty DataLoader.")
             return DataLoader([])
         
         return DataLoader(
@@ -485,37 +477,37 @@ class EtudeDataset(Dataset):
 
     def _print_dataset_statistics(self, all_bar_data: List[Dict[str, Any]]):
         """Prints a detailed statistical report of the dataset's musical attributes."""
-        print("\n--- Detailed Dataset Statistics Report ---")
+        logger.debug("--- Detailed Dataset Statistics Report ---")
         stats = _get_attribute_statistics(all_bar_data, self.attribute_bin_edges)
-        pprint.pprint(stats)
-        
-        print("\n  Attribute Bin Distribution (for all bar pairs):")
+        logger.debug(pprint.pformat(stats))
+
+        logger.debug("Attribute Bin Distribution (for all bar pairs):")
         for attr_name in self.get_attributes_for_model():
-            values = [bar["attributes"].get(attr_name) for bar in all_bar_data 
+            values = [bar["attributes"].get(attr_name) for bar in all_bar_data
                       if bar["attributes"].get(attr_name) is not None and np.isfinite(bar["attributes"][attr_name])]
             if values:
                 binned_ids = [self._get_attribute_bin_id(v, attr_name) for v in values]
                 counts = np.bincount(binned_ids, minlength=self.num_attribute_bins)
-                print(f"    {attr_name}:")
+                logger.debug(f"  {attr_name}:")
                 for i, count in enumerate(counts):
-                    print(f"      Bin {i}: {count} samples")
+                    logger.debug(f"    Bin {i}: {count} samples")
 
     def _print_chunk_stats(self):
         """Prints statistics about the lengths of the training chunks."""
-        print("\n--- Chunk Length Statistics ---")
+        logger.debug("--- Chunk Length Statistics ---")
         sample_size = min(10000, len(self.sample_map))
-        print(f"  (Calculating on a random sample of {sample_size} chunks for efficiency...)")
-        
+        logger.debug(f"Calculating on a random sample of {sample_size} chunks for efficiency...")
+
         indices = random.sample(range(len(self.sample_map)), sample_size)
         lengths = [len(self[i]["input_ids"]) for i in tqdm(indices, desc="Analyzing chunk lengths")]
-        
+
         if lengths:
             lengths_np = np.array(lengths)
-            print(f"  - Count: {len(lengths_np)}")
-            print(f"  - Avg: {np.mean(lengths_np):.2f}, Std: {np.std(lengths_np):.2f}")
-            print(f"  - Min: {np.min(lengths_np)}, Max: {np.max(lengths_np)}")
+            logger.debug(f"  Count: {len(lengths_np)}")
+            logger.debug(f"  Avg: {np.mean(lengths_np):.2f}, Std: {np.std(lengths_np):.2f}")
+            logger.debug(f"  Min: {np.min(lengths_np)}, Max: {np.max(lengths_np)}")
             percentiles = {p: np.percentile(lengths_np, p) for p in [25, 50, 75, 95]}
-            print(f"  - Percentiles: 25th={percentiles[25]:.0f}, 50th(Median)={percentiles[50]:.0f}, 75th={percentiles[75]:.0f}, 95th={percentiles[95]:.0f}")
+            logger.debug(f"  Percentiles: 25th={percentiles[25]:.0f}, 50th(Median)={percentiles[50]:.0f}, 75th={percentiles[75]:.0f}, 95th={percentiles[95]:.0f}")
 
 
 def _get_attribute_statistics(
