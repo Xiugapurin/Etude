@@ -4,8 +4,8 @@ This project is an academic research framework for controllable piano cover gene
 
 The core of the project is the **Decode** stage, which utilizes a Transformer-based model to generate piano cover based on musical context and user-defined attributes. The **Extract** and **Structuralize** stages are handled by pre-existing models to provide the necessary input for the decoder.
 
-- [Demo Page](https://xiugapurin.github.io/Etude/)
-- [Paper](https://arxiv.org/abs/2509.16522)
+- 🎧 [Demo Page](https://xiugapurin.github.io/Etude/)
+- 📄 [Paper](https://arxiv.org/abs/2509.16522)
 
 ---
 
@@ -67,9 +67,6 @@ conda deactivate
 
 For **macOS** users who cannot install Spleeter, **Demucs** is available as an alternative backend.
 
-> [!WARNING]
-> Using **Demucs** with the **Beat-Transformer** produces less accurate beat information, which may affect the quality of the final output.
-
 To use **Demucs**:
 
 1. Install the **Demucs** dependency:
@@ -82,6 +79,9 @@ To use **Demucs**:
    env:
      separation_backend: "demucs"  # Change from "spleeter" to "demucs"
    ```
+
+> [!WARNING]
+> Using **Demucs** with the **Beat-Transformer** produces less accurate beat information, which may affect the quality of the final output.
 
 ### 4️⃣ Download Pre-trained Models
 
