@@ -251,6 +251,40 @@ decoder:
   # ...
 ```
 
+## Debug & Logging
+
+The project uses a unified logging system controlled by the `LOG_LEVEL` environment variable.
+
+### Log Levels
+
+| Level | Description |
+|-------|-------------|
+| `DEBUG` | Detailed information for debugging (file processing, cache hits, etc.) |
+| `INFO` | Standard progress information (default) |
+| `WARN` | Warnings about skipped files or potential issues |
+| `ERROR` | Error messages |
+
+### Usage
+
+```bash
+# Standard output (INFO level, default)
+python prepare.py
+
+# Show detailed debug messages
+LOG_LEVEL=DEBUG python prepare.py
+
+# Suppress all but warnings and errors
+LOG_LEVEL=WARN python infer.py --input "song.wav"
+```
+
+### Disable Colors
+
+To disable colored output (useful for log files or CI environments):
+
+```bash
+NO_COLOR=1 python prepare.py
+```
+
 ---
 
 ## License
