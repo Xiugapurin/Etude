@@ -6,6 +6,7 @@ from pathlib import Path
 
 from etude.evaluation.runner import EvaluationRunner
 from etude.evaluation.reporting import ReportGenerator
+from etude.utils.logger import logger
 
 def main():
     parser = argparse.ArgumentParser(description="Run the evaluation pipeline for the Etude project.")
@@ -28,20 +29,20 @@ def main():
     results_df = runner.run(versions_to_run=args.versions, metrics_to_run=args.metrics)
 
     if results_df.empty:
-        print("\n[WARN] No valid data could be processed. Aborting.")
+        logger.warn("No valid data could be processed. Aborting.")
         return
 
     # 2. Save raw data if requested
     csv_path = args.output_csv or Path(config['output_dir']) / config['report_csv_filename']
     results_df.to_csv(csv_path, index=False)
-    print(f"\n[INFO] Raw results saved to: {csv_path}")
+    logger.info(f"Raw results saved to: {csv_path}")
 
     # 3. Generate report and plot unless suppressed
     if not args.no_report:
         reporter = ReportGenerator(results_df, config)
         reporter.print_summary()
 
-    print("\n[INFO] Evaluation pipeline finished.")
+    logger.success("Evaluation pipeline finished.")
 
 if __name__ == "__main__":
     main()

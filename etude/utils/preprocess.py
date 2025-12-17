@@ -9,6 +9,8 @@ import librosa
 import numpy as np
 from scipy.interpolate import interp1d
 
+from .logger import logger
+
 def compute_wp_std(time_map: list) -> float:
     """Calculates the standard deviation of the time differences in a time map (WP-Std from Music2MIDI paper)."""
     if not time_map:
@@ -161,4 +163,3 @@ def save_volume_map(volume_map: np.ndarray, output_path: Union[str, Path]):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w') as f:
         json.dump(volume_map.tolist(), f)
-    print(f"Volume map saved successfully to: {output_path}")

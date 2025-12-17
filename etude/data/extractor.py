@@ -136,7 +136,6 @@ class AMTAPC_Extractor:
             
         self.config = config
         self.model = _load_model(self.config, model_path, self.device)
-        print(f"AMT Extractor initialized on device: {self.device}")
 
     def extract(self, audio_path: str, output_json_path: str, output_midi_path: Optional[str] = None):
         """

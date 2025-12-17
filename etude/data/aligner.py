@@ -16,6 +16,8 @@ from synctoolbox.feature.pitch import audio_to_pitch_features
 from synctoolbox.feature.pitch_onset import audio_to_pitch_onset_features
 from synctoolbox.feature.utils import estimate_tuning
 
+from ..utils.logger import logger
+
 
 class AudioAligner:
     """
@@ -62,7 +64,7 @@ class AudioAligner:
         
         # Step 2: Cache miss. Fallback to full alignment, which requires .wav files.
         if self.verbose:
-            print(f"    > [INFO] No valid cache for '{version_key}'. Attempting alignment from .wav files.")
+            logger.substep(f"No valid cache for '{version_key}'. Attempting alignment from .wav files.")
         
         if not Path(origin_audio_path).exists() or not Path(cover_audio_path).exists():
             return None 
@@ -71,7 +73,7 @@ class AudioAligner:
             origin_audio, _ = librosa.load(str(origin_audio_path), sr=self.fs)
             cover_audio, _ = librosa.load(str(cover_audio_path), sr=self.fs)
         except Exception as e:
-            print(f"    > [ERROR] Failed to load audio files for alignment: {e}")
+            logger.error(f"Failed to load audio files for alignment: {e}")
             return None
 
         # Compute the full result from scratch.
@@ -171,4 +173,4 @@ class AudioAligner:
             json.dump(all_data, f, indent=4)
         
         if self.verbose:
-            print(f"    > Rich alignment data for '{version_key}' saved to cache: {cache_path}")
+            logger.substep(f"Rich alignment data for '{version_key}' saved to cache: {cache_path}")

@@ -8,6 +8,8 @@ from typing import List, Dict, Union
 
 import numpy as np
 
+from ..utils.logger import logger
+
 
 class BeatAnalyzer:
     """
@@ -45,13 +47,13 @@ class BeatAnalyzer:
         self.downbeat_pred = data.get('downbeat_pred', [])
 
         if not self.downbeat_pred:
-            print("[WARN] No downbeats found in the file. Cannot perform analysis.")
+            logger.warn("No downbeats found in the file. Cannot perform analysis.")
             return []
 
         filtered_beats = self._remove_close_beats()
         measures = self._compute_measures(filtered_beats)
         if not measures:
-            print("[WARN] Could not compute any valid measures.")
+            logger.warn("Could not compute any valid measures.")
             return []
 
         global_time_sig = self._compute_global_time_sig(measures)
@@ -79,7 +81,7 @@ class BeatAnalyzer:
                 })
         
         if not processed_regions:
-            print("[WARN] No stable tempo regions were detected.")
+            logger.warn("No stable tempo regions were detected.")
             return []
 
         final_regions = self._patch_region_gaps(processed_regions)
@@ -94,7 +96,7 @@ class BeatAnalyzer:
             })
         
         if self.verbose:
-            print(f"Tempo analysis complete. Found {len(final_output)} regions.")
+            logger.debug(f"Tempo analysis complete. Found {len(final_output)} regions.")
         
         return final_output
 
@@ -106,7 +108,7 @@ class BeatAnalyzer:
             json.dump(tempo_data, f, indent=4)
 
         if self.verbose:
-            print(f"Tempo data saved successfully to: {output_path}")
+            logger.debug(f"Tempo data saved successfully to: {output_path}")
 
     def _remove_close_beats(self, beat_threshold: float = 0.1) -> List[float]:
         """Filters out beat predictions that are too close to a downbeat."""

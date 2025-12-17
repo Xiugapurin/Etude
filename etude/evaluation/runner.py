@@ -8,6 +8,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from ..data.aligner import AudioAligner
+from ..utils.logger import logger
 from .metrics.wpd import WPDCalculator
 from .metrics.rgc import RGCCalculator
 from .metrics.ipe import IPECalculator
@@ -48,7 +49,7 @@ class EvaluationRunner:
             with open(self.metadata_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
         except FileNotFoundError:
-            print(f"[Error] Metadata file not found at {self.metadata_path}")
+            logger.error(f"Metadata file not found at {self.metadata_path}")
             return pd.DataFrame()
 
         results_list = []
@@ -73,11 +74,11 @@ class EvaluationRunner:
                     if align_result:
                         res = self.calculators['wpd'].calculate(align_result)
                         if "error" in res:
-                            print(f"\n[WARN] WPD calculation failed for '{dir_name}/{version}': {res['error']}")
+                            logger.warn(f"WPD calculation failed for '{dir_name}/{version}': {res['error']}")
                         else:
                             result_row.update(res)
                     else:
-                        print(f"\n[INFO] Skipping WPD for '{dir_name}/{version}' as alignment could not be performed (check for missing .wav files if cache is empty).")
+                        logger.info(f"Skipping WPD for '{dir_name}/{version}' as alignment could not be performed (check for missing .wav files if cache is empty).")
                 
                 # --- RGC/IPE Calculation Block ---
                 mid_path = song_dir / f"{version}.mid"
@@ -88,14 +89,14 @@ class EvaluationRunner:
                     if "rgc" in metrics_to_run:
                         res = self.calculators['rgc'].calculate(eval_file_path)
                         if "error" in res:
-                            print(f"\n[WARN] RGC calculation failed for '{dir_name}/{version}': {res['error']}")
+                            logger.warn(f"RGC calculation failed for '{dir_name}/{version}': {res['error']}")
                         else:
                             result_row.update(res)
 
                     if "ipe" in metrics_to_run:
                         res = self.calculators['ipe'].calculate(eval_file_path)
                         if "error" in res:
-                            print(f"\n[WARN] IPE calculation failed for '{dir_name}/{version}': {res['error']}")
+                            logger.warn(f"IPE calculation failed for '{dir_name}/{version}': {res['error']}")
                         else:
                             result_row.update(res)
                 

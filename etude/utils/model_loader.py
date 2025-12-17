@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Union, Optional
 
 from ..models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
+from .logger import logger
 
 def load_etude_decoder(
     config_path: Union[str, Path],
@@ -23,17 +24,18 @@ def load_etude_decoder(
             device = "mps"
         else:
             device = "cpu"
-    
-    print(f"    > Loading model configuration from: {config_path}")
+
+    logger.info(f"Loading model...")
+    logger.step(f"Loading model configuration from: {config_path}")
     config = EtudeDecoderConfig.from_json_file(str(config_path))
-    
+
     model = EtudeDecoder(config)
-    print(f"    > Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
-    
+    logger.step(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
+
     if checkpoint_path:
-        print(f"    > Loading checkpoint from: {checkpoint_path}")
+        logger.step(f"Loading checkpoint from: {checkpoint_path}")
         state_dict = torch.load(checkpoint_path, map_location=device)
-        
+
         # Extract the model's state dict if it's in a payload
         if 'model_state_dict' in state_dict:
             state_dict = state_dict['model_state_dict']
@@ -42,10 +44,10 @@ def load_etude_decoder(
         cleaned_state_dict = OrderedDict()
         for k, v in state_dict.items():
             cleaned_state_dict[k.replace('_orig_mod.', '')] = v
-        
+
         # Load with strict=True to ensure a perfect match
         model.load_state_dict(cleaned_state_dict, strict=True)
-        print("    > Checkpoint loaded successfully.")
+        logger.substep("Checkpoint loaded successfully.")
             
     model.to(device)
     model.eval()

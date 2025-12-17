@@ -8,6 +8,8 @@ import argparse
 
 from yt_dlp import YoutubeDL
 
+from .logger import logger
+
 def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bool = False) -> bool:
     """
     Downloads the best audio from a given URL, converts it to WAV,
@@ -28,9 +30,9 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        print(f"[ERROR] Could not create directory {output_dir}: {e}", file=sys.stderr)
+        logger.error(f"Could not create directory {output_dir}: {e}")
         return False
-    
+
     output_template = output_dir / output_stem
     ydl_opts = {
         "outtmpl": str(output_template),
@@ -42,16 +44,16 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
         "ignoreerrors": True,
         "overwrites": True,
         "quiet": True,
-        "no_warnings": True, 
+        "no_warnings": True,
     }
 
     try:
         if verbose:
-            print(f"    > Downloading from {url}")
+            logger.substep(f"Downloading from {url}")
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        print(f"[ERROR] An exception occurred during download: {e}", file=sys.stderr)
+        logger.error(f"An exception occurred during download: {e}")
         traceback.print_exc(file=sys.stderr)
         return False
 
@@ -59,13 +61,13 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
 
     if final_output_path.exists() and final_output_path.stat().st_size > 0:
         if verbose:
-            print(f"    > Audio successfully saved to: {final_output_path}")
+            logger.substep(f"Audio successfully saved to: {final_output_path}")
         return True
     else:
-        print(f"[ERROR] Download failed. Output file was not created or is empty.", file=sys.stderr)
+        logger.error("Download failed. Output file was not created or is empty.")
         expected_wav = output_template.with_suffix('.wav')
         if expected_wav.exists() and expected_wav != final_output_path:
-             print(f"[INFO] A file was found at {expected_wav}, but the expected path was {final_output_path}.")
+            logger.info(f"A file was found at {expected_wav}, but the expected path was {final_output_path}.")
         return False
 
 if __name__ == "__main__":
@@ -75,12 +77,12 @@ if __name__ == "__main__":
     parser.add_argument("url", type=str, help="URL of the video/audio.")
     parser.add_argument("output_path", type=str, help="Full path for the output .wav file.")
     args = parser.parse_args()
-    
+
     success = download_audio_from_url(args.url, args.output_path)
-    
+
     if success:
-        print("\nDownload script finished successfully.")
+        logger.success("Download script finished successfully.")
         sys.exit(0)
     else:
-        print("\nDownload script failed.")
+        logger.error("Download script failed.")
         sys.exit(1)

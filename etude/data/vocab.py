@@ -8,6 +8,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Union
 
+from ..utils.logger import logger
+
 # --- Special Tokens ---
 PAD_TOKEN = "<PAD>"
 BOS_TOKEN = "<BOS>"
@@ -62,7 +64,7 @@ class Vocab:
             self._add_token(token)
         
         if self.verbose:
-            print(f"[INFO] Initialized Vocab with special tokens: {self.special_tokens}")
+            logger.info(f"Initialized Vocab with special tokens: {self.special_tokens}")
 
     def _add_token(self, token: str) -> int:
         """Adds a token to the vocabulary if it doesn't already exist."""
@@ -82,14 +84,14 @@ class Vocab:
             event_sequences (List[List[Event]]): A list of event sequences to build the vocabulary from.
         """
         if self.verbose:
-            print("[INFO] Building vocabulary from event sequences.")
+            logger.info("Building vocabulary from event sequences.")
 
         for seq in event_sequences:
             for event in seq:
                 self._add_token(str(event))
 
         if self.verbose:
-            print(f"    > Vocabulary built. Total unique tokens: {len(self)}")
+            logger.substep(f"Vocabulary built. Total unique tokens: {len(self)}")
 
     def encode(self, token: Union[str, Event]) -> int:
         """
@@ -159,7 +161,7 @@ class Vocab:
             json.dump(vocab_data, f, ensure_ascii=False, indent=2)
         
         if self.verbose:
-            print(f"Vocabulary saved to {filepath}")
+            logger.debug(f"Vocabulary saved to {filepath}")
     
     def encode_and_save_sequence(
             self, 
@@ -207,8 +209,6 @@ class Vocab:
         instance.id_to_token = [""] * len(instance.token_to_id)
         for token, token_id in instance.token_to_id.items():
              instance.id_to_token[token_id] = token
-
-        print(f"[INFO] Vocabulary loaded from {filepath}. Size: {len(instance)}")
 
         return instance
 

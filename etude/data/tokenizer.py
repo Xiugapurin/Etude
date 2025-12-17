@@ -10,6 +10,7 @@ import numpy as np
 import pretty_midi
 
 from .vocab import Event
+from ..utils.logger import logger
 
 # --- Tokenization Constants ---
 PAD_CLASS_ID = 0
@@ -48,7 +49,7 @@ class TinyREMITokenizer:
         current_bar = []
         in_bar = False
         if bar_bos_id < 0 or bar_eos_id < 0:
-            print("[Warning] Invalid Bar BOS/EOS IDs.", file=sys.stderr)
+            logger.warn("Invalid Bar BOS/EOS IDs.")
             return [id_sequence] if id_sequence else []
 
         for token_id in id_sequence:
@@ -448,9 +449,9 @@ class TinyREMITokenizer:
             try:
                 with open(volume_map_path, 'r') as f:
                     volume_contour = np.array(json.load(f))
-                print(f"[INFO] Successfully loaded volume map from {volume_map_path}")
+                logger.info(f"Loaded volume map from {volume_map_path}")
             except Exception as e:
-                print(f"[ERROR] Could not load or parse volume map at {volume_map_path}. Error: {e}")
+                logger.error(f"Could not load or parse volume map at {volume_map_path}. Error: {e}")
         
         raw_decoded_notes = []
         event_idx, measure_idx, current_onset_sec, pending_grace_value = 0, 0, 0.0, None

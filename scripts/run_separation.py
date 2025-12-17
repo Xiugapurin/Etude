@@ -7,6 +7,10 @@ from pathlib import Path
 import numpy as np
 import librosa
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from etude.utils.logger import logger
+
 
 def separate_with_spleeter(input_file: Path, mel_filter_bank: np.ndarray, sample_rate: int):
     """
@@ -23,17 +27,17 @@ def separate_with_spleeter(input_file: Path, mel_filter_bank: np.ndarray, sample
     from spleeter.separator import Separator
     from spleeter.audio.adapter import AudioAdapter
 
-    print("    > Initializing Spleeter separator (5stems)...")
+    logger.substep("Initializing Spleeter separator (5stems)...")
     separator = Separator('spleeter:5stems')
 
-    print(f"    > Loading audio: {input_file.name}")
+    logger.substep(f"Loading audio: {input_file.name}")
     audio_loader = AudioAdapter.default()
     waveform, _ = audio_loader.load(str(input_file), sample_rate=sample_rate)
 
-    print("    > Separating audio into 5 stems...")
+    logger.substep("Separating audio into 5 stems...")
     separated_stems = separator.separate(waveform)
 
-    print("    > Converting each stem to a dB Mel Spectrogram...")
+    logger.substep("Converting each stem to a dB Mel Spectrogram...")
     processed_spectrograms = []
     for key in separated_stems:
         stem_waveform = separated_stems[key]
@@ -73,20 +77,20 @@ def separate_with_demucs(input_file: Path, mel_filter_bank: np.ndarray, sample_r
             # MPS is not well supported for Demucs due to conv1d limitations
             device = "cpu"
     elif device == "mps":
-        print("    > Warning: MPS has limitations with Demucs, falling back to CPU")
+        logger.warn("MPS has limitations with Demucs, falling back to CPU")
         device = "cpu"
-    print(f"    > Using device: {device}")
+    logger.substep(f"Using device: {device}")
 
-    print("    > Initializing Demucs separator (htdemucs_6s)...")
+    logger.substep("Initializing Demucs separator (htdemucs_6s)...")
     model = get_model("htdemucs_6s")
     model.to(device)
 
-    print(f"    > Loading audio: {input_file.name}")
+    logger.substep(f"Loading audio: {input_file.name}")
     waveform, sr = torchaudio.load(str(input_file))
 
     # Resample if necessary
     if sr != sample_rate:
-        print(f"    > Resampling from {sr}Hz to {sample_rate}Hz...")
+        logger.substep(f"Resampling from {sr}Hz to {sample_rate}Hz...")
         resampler = torchaudio.transforms.Resample(sr, sample_rate)
         waveform = resampler(waveform)
 
@@ -97,7 +101,7 @@ def separate_with_demucs(input_file: Path, mel_filter_bank: np.ndarray, sample_r
     # Add batch dimension and move to device
     waveform = waveform.unsqueeze(0).to(device)
 
-    print("    > Separating audio into stems...")
+    logger.substep("Separating audio into stems...")
     with torch.no_grad():
         sources = apply_model(model, waveform, device=device, progress=True)
 
@@ -117,7 +121,7 @@ def separate_with_demucs(input_file: Path, mel_filter_bank: np.ndarray, sample_r
         ("other", [2, 4]),     # other + guitar (to match Spleeter's "other")
     ]
 
-    print("    > Converting each stem to a dB Mel Spectrogram...")
+    logger.substep("Converting each stem to a dB Mel Spectrogram...")
     processed_spectrograms = []
 
     for _, indices in stem_configs:
@@ -151,7 +155,7 @@ def separate_and_extract_features(input_path: str, output_path: str, backend: st
     output_file = Path(output_path)
 
     if not input_file.exists():
-        print(f"[ERROR] Input audio file not found at {input_file}", file=sys.stderr)
+        logger.error(f"Input audio file not found at {input_file}")
         sys.exit(1)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -175,13 +179,13 @@ def separate_and_extract_features(input_path: str, output_path: str, backend: st
         db_specs = np.stack([librosa.power_to_db(s, ref=np.max) for s in stacked_mel_specs])
         final_features = np.transpose(db_specs, (0, 2, 1))
 
-        print(f"    > Saving final feature array to {output_file.name}...")
+        logger.substep(f"Saving final feature array to {output_file.name}...")
         np.save(output_file, final_features)
 
-        print("    > Feature extraction complete.")
+        logger.substep("Feature extraction complete.")
 
     except Exception as e:
-        print(f"[ERROR] An unexpected error occurred during {backend} processing: {e}", file=sys.stderr)
+        logger.error(f"An unexpected error occurred during {backend} processing: {e}")
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)

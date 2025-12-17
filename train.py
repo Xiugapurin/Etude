@@ -17,6 +17,7 @@ from etude.data.dataset import EtudeDataset
 from etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
 from etude.data.vocab import Vocab
 from etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
+from etude.utils.logger import logger
 
 class Trainer:
     """Encapsulates the entire training process."""
@@ -31,19 +32,19 @@ class Trainer:
         self.output_dir = Path(self.config['checkpoint']['output_dir'])
         self.run_dir = self.output_dir / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        print(f"[SETUP] Run ID: {run_id}")
-        print(f"[SETUP] Device: {self.device}")
-        print(f"[SETUP] Checkpoints and logs will be saved to: {self.run_dir.resolve()}")
+        logger.info(f"Run ID: {run_id}")
+        logger.info(f"Device: {self.device}")
+        logger.info(f"Checkpoints and logs will be saved to: {self.run_dir.resolve()}")
 
         # --- Load Data ---
-        print("[SETUP] Loading vocabulary and dataset...")
+        logger.substep("Loading vocabulary and dataset...")
         vocab = Vocab.load(self.config['data']['vocab_path'])
         self.model_config = self._create_model_config(vocab)
 
         model_config_save_path = self.run_dir / "etude_decoder_config.json"
         with open(model_config_save_path, 'w') as f:
             json.dump(self.model_config.to_dict(), f, indent=2)
-        print(f"[SETUP] Final model configuration saved to: {model_config_save_path}")
+        logger.substep(f"Final model configuration saved to: {model_config_save_path}")
         
         dataset = EtudeDataset(
             dataset_dir=self.config['data']['dataset_dir'],
@@ -61,7 +62,7 @@ class Trainer:
         )
         
         # --- Initialize Model, Optimizer, Scheduler ---
-        print("[SETUP] Initializing model, optimizer, and scheduler...")
+        logger.substep("Initializing model, optimizer, and scheduler...")
         self.model = EtudeDecoder(self.model_config).to(self.device)
         self.optimizer = optim.AdamW(
             self.model.parameters(),
@@ -104,7 +105,7 @@ class Trainer:
 
     def train(self):
         """Runs the main training loop."""
-        print("\n[START] Beginning training loop...")
+        logger.info("Beginning training loop...")
         scaler = torch.amp.GradScaler(enabled=(self.device == "cuda"))
         self.model.train()
         
@@ -156,7 +157,7 @@ class Trainer:
                 epoch, self.global_step, is_epoch_end=is_save_epoch
             )
 
-        print("\n[SUCCESS] Training finished.")
+        logger.success("Training finished.")
 
 def main():
     parser = argparse.ArgumentParser(description="Train the EtudeDecoder model.")

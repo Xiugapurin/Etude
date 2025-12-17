@@ -3,6 +3,8 @@
 import pandas as pd
 from typing import Dict
 
+from ..utils.logger import logger
+
 class ReportGenerator:
     """
     Generates text-based and visual reports from a DataFrame of evaluation results.
@@ -40,26 +42,25 @@ class ReportGenerator:
         Calculates and prints detailed statistical summaries for each metric to the console.
         """
         if not self.metrics:
-            print("[REPORT] No valid metric columns found in the results. Cannot generate summary.")
+            logger.warn("No valid metric columns found in the results. Cannot generate summary.")
             return
 
-        print("\n" + "="*25 + " Evaluation Summary Report " + "="*25)
-        
+        logger.report_header("Evaluation Summary Report")
+
         # Print detailed statistics for each metric individually
         for metric in self.metrics:
-            print(f"\n--- Metric: {metric.upper()} ---")
+            logger.section(f"Metric: {metric.upper()}")
             # Use groupby() and describe() for a comprehensive statistical summary
             summary = self.df.groupby('display_name')[metric].describe()
             # Sort by the mean score to easily see the best performing versions
             summary = summary.sort_values('mean', ascending=False)
-            print(summary)
-            print("-" * (len(metric) + 14))
-            
+            logger.step(str(summary))
+
         # Print a final, combined overview table of mean scores
         if len(self.metrics) > 1:
-            print("\n--- Overall Mean Scores ---")
+            logger.section("Overall Mean Scores")
             mean_summary = self.df.groupby('display_name')[self.metrics].mean()
             # Sort by the first available metric as a primary sorting key
-            print(mean_summary.sort_values(self.metrics[0], ascending=False))
+            logger.step(str(mean_summary.sort_values(self.metrics[0], ascending=False)))
 
-        print("="*75)
+        logger.report_separator()
