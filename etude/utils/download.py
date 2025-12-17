@@ -10,7 +10,12 @@ from yt_dlp import YoutubeDL
 
 from .logger import logger
 
-def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bool = False) -> bool:
+def download_audio_from_url(
+    url: str,
+    output_path: Union[str, Path],
+    verbose: bool = False,
+    progress_mode: bool = False
+) -> bool:
     """
     Downloads the best audio from a given URL, converts it to WAV,
     and saves it to the specified output path.
@@ -19,6 +24,8 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
         url (str): The URL of the video or audio to download.
         output_path (Union[str, Path]): The full path (including filename and extension)
                                         where the final .wav file will be saved.
+        verbose (bool): If True, log detailed progress messages.
+        progress_mode (bool): If True, use tqdm-compatible logging methods.
 
     Returns:
         bool: True if the download and conversion were successful, False otherwise.
@@ -27,10 +34,13 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
     output_dir = output_path.parent
     output_stem = output_path.stem
 
+    # Select logging functions based on progress mode
+    warn_fn = logger.progress_warn if progress_mode else logger.warn
+
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        logger.warn(f"Could not create directory {output_dir}: {e}")
+        warn_fn(f"Could not create directory {output_dir}: {e}")
         return False
 
     output_template = output_dir / output_stem
@@ -45,6 +55,7 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
         "overwrites": True,
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
     }
 
     try:
@@ -53,7 +64,7 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        logger.warn(f"Download exception: {e}")
+        warn_fn(f"Download exception: {e}")
         return False
 
     final_output_path = output_path
@@ -63,7 +74,7 @@ def download_audio_from_url(url: str, output_path: Union[str, Path], verbose: bo
             logger.info(f"Audio saved to: {final_output_path}")
         return True
     else:
-        logger.warn("Download failed: Output file not created or is empty.")
+        warn_fn("Download failed: Output file not created or is empty.")
         return False
 
 if __name__ == "__main__":

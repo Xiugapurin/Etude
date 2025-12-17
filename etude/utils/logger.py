@@ -17,6 +17,16 @@ Logging system for Etude project.
 | skip()      | Skipped operation              | "[SKIP] Message."
 | debug()     | Debug info (verbose only)      | "[DEBUG] Message"
 
+## Progress Bar Compatible Methods
+
+Use these methods inside tqdm loops to avoid breaking progress bar display:
+
+| Method          | Purpose                                    |
+|-----------------|--------------------------------------------|
+| progress_warn() | Warning message (tqdm compatible)          |
+| progress_info() | Info message (tqdm compatible)             |
+| progress_skip() | Skip message (tqdm compatible)             |
+
 ## Format Conventions
 
 1. Capitalization: Always start with uppercase letter
@@ -206,7 +216,7 @@ class EtudeLogger:
 
         header = f" Stage {number}: {name} "
         border = "=" * 25
-        formatted = f"\n{border}{header}{border}"
+        formatted = f"\n{border}{header}{border}\n"
 
         if self._use_color:
             formatted = self._colorize(formatted, "STAGE")
@@ -279,6 +289,37 @@ class EtudeLogger:
         if self._use_color:
             formatted = self._colorize(formatted, "STAGE")
         print(formatted)
+
+    # === Progress bar compatible logging ===
+
+    def _tqdm_write(self, message: str, file=None) -> None:
+        """Write message using tqdm.write() to avoid progress bar interference."""
+        try:
+            from tqdm import tqdm
+            tqdm.write(message, file=file or sys.stdout)
+        except ImportError:
+            print(message, file=file or sys.stdout)
+
+    def progress_warn(self, message: str) -> None:
+        """Log a warning message compatible with tqdm progress bars."""
+        if self._level > LogLevel.WARN:
+            return
+        formatted_prefix = self._colorize("[WARN]", "WARN")
+        self._tqdm_write(f"{formatted_prefix} {message}")
+
+    def progress_info(self, message: str) -> None:
+        """Log an info message compatible with tqdm progress bars."""
+        if self._level > LogLevel.INFO:
+            return
+        formatted_prefix = self._colorize("[INFO]", "INFO")
+        self._tqdm_write(f"{formatted_prefix} {message}")
+
+    def progress_skip(self, message: str) -> None:
+        """Log a skip message compatible with tqdm progress bars."""
+        if self._level > LogLevel.INFO:
+            return
+        formatted_prefix = self._colorize("[SKIP]", "SKIP")
+        self._tqdm_write(f"{formatted_prefix} {message}")
 
 
 # Global singleton instance

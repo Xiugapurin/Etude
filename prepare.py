@@ -48,6 +48,8 @@ def run_stage_1_download(config: dict, verbose: bool = False):
         sys.exit(1)
 
     logger.step("Downloading audio files")
+    failed_dirs = []
+
     for index, row in tqdm(df.iterrows(), total=len(df), desc="[Stage 1] Downloading"):
         song_index = index + 1
         piano_id, pop_id = row['piano_ids'], row['pop_ids']
@@ -58,15 +60,26 @@ def run_stage_1_download(config: dict, verbose: bool = False):
         cover_output_path = song_dir / "cover.wav"
         origin_output_path = song_dir / "origin.wav"
 
+        cover_ok = True
+        origin_ok = True
+
         if not cover_output_path.exists():
             piano_url = f"https://www.youtube.com/watch?v={piano_id}"
-            download_audio_from_url(piano_url, cover_output_path)
+            cover_ok = download_audio_from_url(piano_url, cover_output_path, progress_mode=True)
 
         if not origin_output_path.exists():
             pop_url = f"https://www.youtube.com/watch?v={pop_id}"
-            download_audio_from_url(pop_url, origin_output_path)
+            origin_ok = download_audio_from_url(pop_url, origin_output_path, progress_mode=True)
 
-    logger.info("Download complete.")
+        if not cover_ok or not origin_ok:
+            failed_dirs.append(song_dir.name)
+
+    # Report summary
+    if failed_dirs:
+        logger.warn(f"Download completed with {len(failed_dirs)} failed directories.")
+        logger.substep(f"Failed: {', '.join(failed_dirs[:10])}" + (f" and {len(failed_dirs) - 10} more..." if len(failed_dirs) > 10 else ""))
+    else:
+        logger.info("Download complete.")
 
 
 def run_stage_2_preprocess(config: dict, verbose: bool = False):
@@ -108,9 +121,9 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
 
         if transcription_json.exists():
             if verbose:
-                logger.skip(f"{song_name}: transcription.json already exists.")
+                logger.progress_skip(f"{song_name}: transcription.json already exists.")
         elif not cover_wav.exists():
-            logger.warn(f"Skipping {song_name}: cover.wav not found.")
+            logger.progress_warn(f"Skipping {song_name}: cover.wav not found.")
         else:
             if verbose:
                 logger.substep(f"Transcribing {song_name}...")
@@ -128,9 +141,9 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
 
         if tempo_path.exists():
             if verbose:
-                logger.skip(f"{song_name}: tempo.json already exists.")
+                logger.progress_skip(f"{song_name}: tempo.json already exists.")
         elif not origin_wav.exists():
-            logger.warn(f"Skipping {song_name}: origin.wav not found.")
+            logger.progress_warn(f"Skipping {song_name}: origin.wav not found.")
         else:
             if verbose:
                 logger.substep(f"Detecting beats for {song_name}...")
@@ -204,12 +217,12 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
         final_cover_json = synced_dir / song_name / "cover.json"
         if final_cover_json.exists():
             if verbose:
-                logger.skip(f"{song_name}: Already processed.")
+                logger.progress_skip(f"{song_name}: Already processed.")
             final_metadata.append({"dir_name": song_name, "status": "kept"})
             continue
 
         if not all(p.exists() for p in [origin_wav, cover_wav, beat_pred_path, transcription_path]):
-            logger.warn(f"Skipping {song_name}: Missing required input files.")
+            logger.progress_warn(f"Skipping {song_name}: Missing required input files.")
             continue
 
         if verbose:
@@ -217,7 +230,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
 
         align_result = aligner.align(origin_wav, cover_wav, song_dir)
         if not align_result:
-            logger.warn(f"Skipping {song_name}: Alignment failed.")
+            logger.progress_warn(f"Skipping {song_name}: Alignment failed.")
             continue
 
         with open(beat_pred_path, 'r') as f:
@@ -290,11 +303,11 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
 
         if output_json_path.exists():
             if verbose:
-                logger.skip(f"{song_name}: extract.json already exists.")
+                logger.progress_skip(f"{song_name}: extract.json already exists.")
             continue
 
         if not origin_wav_path.exists():
-            logger.warn(f"Skipping {song_name}: origin.wav not found.")
+            logger.progress_warn(f"Skipping {song_name}: origin.wav not found.")
             continue
 
         if verbose:
@@ -357,7 +370,7 @@ def run_stage_5_tokenize(config: dict, verbose: bool = False):
         tgt_path = current_song_dir / "cover.json"
 
         if not all(p.exists() for p in [tempo_path, src_path, tgt_path]):
-            logger.warn(f"Skipping {song_name}: Missing required files.")
+            logger.progress_warn(f"Skipping {song_name}: Missing required files.")
             continue
 
         src_tokenizer = TinyREMITokenizer(tempo_path)
