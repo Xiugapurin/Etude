@@ -179,10 +179,8 @@ def separate_and_extract_features(input_path: str, output_path: str, backend: st
         db_specs = np.stack([librosa.power_to_db(s, ref=np.max) for s in stacked_mel_specs])
         final_features = np.transpose(db_specs, (0, 2, 1))
 
-        logger.substep(f"Saving final feature array to {output_file.name}...")
+        logger.substep(f"Saving features to {output_file.name}...")
         np.save(output_file, final_features)
-
-        logger.substep("Feature extraction complete.")
 
     except Exception as e:
         logger.error(f"An unexpected error occurred during {backend} processing: {e}")

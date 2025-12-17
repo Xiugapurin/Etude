@@ -138,15 +138,12 @@ def main():
     parser.add_argument("--config_path", default="configs/structuralize_config.yaml", help="Path to the configuration YAML file.")
     args = parser.parse_args()
 
-    logger.substep("Starting Beat Detection")
-
     with open(args.config_path, 'r') as f:
         config = yaml.safe_load(f)['beat_detection']
 
     detector = BeatDetector(config=config, model_path=args.model_path)
     detector.detect(input_npy_path=args.input_npy, output_json_path=args.output_json)
 
-    logger.substep("Beat Detection Finished Successfully")
     sys.exit(0)
 
 

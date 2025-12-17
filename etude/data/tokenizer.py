@@ -449,9 +449,8 @@ class TinyREMITokenizer:
             try:
                 with open(volume_map_path, 'r') as f:
                     volume_contour = np.array(json.load(f))
-                logger.info(f"Loaded volume map from {volume_map_path}")
             except Exception as e:
-                logger.error(f"Could not load or parse volume map at {volume_map_path}. Error: {e}")
+                logger.warn(f"Could not load volume map at {volume_map_path}: {e}")
         
         raw_decoded_notes = []
         event_idx, measure_idx, current_onset_sec, pending_grace_value = 0, 0, 0.0, None

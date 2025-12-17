@@ -49,18 +49,19 @@ class ReportGenerator:
 
         # Print detailed statistics for each metric individually
         for metric in self.metrics:
-            logger.section(f"Metric: {metric.upper()}")
+            logger.report_section(f"Metric: {metric.upper()}")
             # Use groupby() and describe() for a comprehensive statistical summary
             summary = self.df.groupby('display_name')[metric].describe()
             # Sort by the mean score to easily see the best performing versions
-            summary = summary.sort_values('mean', ascending=False)
-            logger.step(str(summary))
+            summary = summary.sort_values('mean', ascending=False).rename_axis('Model')
+            print(summary.to_string())
 
         # Print a final, combined overview table of mean scores
         if len(self.metrics) > 1:
-            logger.section("Overall Mean Scores")
+            logger.report_section("Overall Mean Scores")
             mean_summary = self.df.groupby('display_name')[self.metrics].mean()
             # Sort by the first available metric as a primary sorting key
-            logger.step(str(mean_summary.sort_values(self.metrics[0], ascending=False)))
+            mean_summary = mean_summary.sort_values(self.metrics[0], ascending=False).rename_axis('Model')
+            print(mean_summary.to_string())
 
         logger.report_separator()

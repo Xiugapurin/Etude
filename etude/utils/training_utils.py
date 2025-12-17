@@ -40,7 +40,7 @@ def save_checkpoint(
     if is_epoch_end:
         epoch_path = run_dir / f"epoch_{(epoch + 1):04d}.pth"
         shutil.copyfile(latest_path, epoch_path)
-        logger.info(f"Epoch-specific checkpoint saved to {epoch_path}")
+        logger.info(f"Checkpoint saved to: {epoch_path}")
 
 def load_checkpoint(
     run_dir: Path,
@@ -62,8 +62,8 @@ def load_checkpoint(
         
         global_step = payload.get('global_step', 0)
         start_epoch = payload.get('epoch', -1) + 1 # Resume from the next epoch
-        logger.resume(f"Checkpoint loaded. Resuming training from Epoch {start_epoch}")
+        logger.resume(f"Resuming from epoch {start_epoch}.")
         return start_epoch, global_step
 
-    logger.info("No checkpoint found. Starting training from scratch.")
+    logger.info("No checkpoint found. Starting from scratch.")
     return start_epoch, global_step

@@ -35,18 +35,19 @@ def run_stage_1_download(config: dict, verbose: bool = False):
     output_dir = Path(stage_config['output_dir'])
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.step("Loading source CSV")
     if not csv_path.exists():
         logger.error(f"Input CSV file not found at: {csv_path}")
         sys.exit(1)
 
     try:
         df = pd.read_csv(csv_path)
-        if verbose:
-            logger.info(f"Loaded '{csv_path.name}'. Found {len(df)} song pairs to process.")
+        logger.info(f"Loaded {len(df)} song pairs from: {csv_path}")
     except Exception as e:
         logger.error(f"Failed to read or parse CSV file: {e}")
         sys.exit(1)
 
+    logger.step("Downloading audio files")
     for index, row in tqdm(df.iterrows(), total=len(df), desc="[Stage 1] Downloading"):
         song_index = index + 1
         piano_id, pop_id = row['piano_ids'], row['pop_ids']
@@ -65,7 +66,7 @@ def run_stage_1_download(config: dict, verbose: bool = False):
             pop_url = f"https://www.youtube.com/watch?v={pop_id}"
             download_audio_from_url(pop_url, origin_output_path)
 
-    logger.info("Stage 1: Download complete.")
+    logger.info("Download complete.")
 
 
 def run_stage_2_preprocess(config: dict, verbose: bool = False):
@@ -75,8 +76,6 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     """
     logger.stage(2, "Preprocessing")
 
-    # TODO: Skip already preprocessed directories
-
     raw_dir = Path(config['download']['output_dir'])
     processed_dir = Path(config['preprocess']['output_dir'])
     processed_dir.mkdir(parents=True, exist_ok=True)
@@ -84,6 +83,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
     with open("configs/project_config.yaml", 'r') as f:
         project_config = yaml.safe_load(f)
 
+    logger.step("Loading transcription model")
     with open(config['preprocess']['hft_transformer']['feature_config_path'], 'r') as f:
         hft_feature_config = json.load(f)
 
@@ -92,9 +92,11 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         model_path=config['preprocess']['hft_transformer']['model_path'],
         verbose=verbose
     )
+    logger.info("Transcription model loaded.")
 
     song_dirs = sorted([d for d in raw_dir.iterdir() if d.is_dir()])
 
+    logger.step("Processing songs")
     for song_dir in tqdm(song_dirs, desc="[Stage 2] Processing Songs"):
         song_name = song_dir.name
         output_song_dir = processed_dir / song_name
@@ -104,13 +106,14 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         cover_wav = song_dir / "cover.wav"
         transcription_json = output_song_dir / "transcription.json"
 
-        if transcription_json.exists() and verbose:
-            logger.skip(f"Transcription for {song_name}: transcription.json already exists.")
+        if transcription_json.exists():
+            if verbose:
+                logger.skip(f"{song_name}: transcription.json already exists.")
         elif not cover_wav.exists():
-            logger.warn(f"Skipping transcription for {song_name}: cover.wav not found.")
+            logger.warn(f"Skipping {song_name}: cover.wav not found.")
         else:
             if verbose:
-                logger.substep(f"Transcribing cover for {song_name}...")
+                logger.substep(f"Transcribing {song_name}...")
             transcriber.transcribe(
                 input_wav_path=cover_wav,
                 output_json_path=transcription_json,
@@ -123,18 +126,18 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
         beat_pred_path = output_song_dir / "beat_pred.json"
         tempo_path = output_song_dir / "tempo.json"
 
-        if tempo_path.exists() and verbose:
-            logger.skip(f"Beat/Tempo for {song_name}: tempo.json already exists.")
+        if tempo_path.exists():
+            if verbose:
+                logger.skip(f"{song_name}: tempo.json already exists.")
         elif not origin_wav.exists():
-            logger.warn(f"Skipping beat/tempo for {song_name}: origin.wav not found.")
+            logger.warn(f"Skipping {song_name}: origin.wav not found.")
         else:
             if verbose:
-                logger.substep(f"Processing beats for {song_name}...")
+                logger.substep(f"Detecting beats for {song_name}...")
 
             separation_backend = project_config['env'].get('separation_backend', 'spleeter')
 
             if separation_backend == 'demucs':
-                # Demucs runs in main environment
                 separation_cmd = [
                     sys.executable, "scripts/run_separation.py",
                     "--input", str(origin_wav),
@@ -142,7 +145,6 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
                     "--backend", "demucs"
                 ]
             else:
-                # Spleeter requires separate conda environment
                 separation_cmd = [
                     "conda", "run", "-n", project_config['env']['spleeter_env_name'],
                     "python", "scripts/run_separation.py",
@@ -153,7 +155,6 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
 
             subprocess.run(separation_cmd, check=True, capture_output=True)
 
-            # Beat detection now runs in main environment (madmom is installed)
             beat_detection_cmd = [
                 sys.executable, "scripts/run_beat_detection.py",
                 "--input_npy", str(sep_npy_path),
@@ -167,7 +168,7 @@ def run_stage_2_preprocess(config: dict, verbose: bool = False):
             tempo_data = beat_analyzer.analyze(beat_pred_path)
             beat_analyzer.save_tempo_data(tempo_data, tempo_path)
 
-    logger.info("Stage 2: Transcription & Beat Detection complete.")
+    logger.info("Preprocessing complete.")
 
 
 def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
@@ -184,12 +185,14 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
 
     wp_std_threshold = config['align_and_filter']['wp_std_threshold']
 
+    logger.step("Initializing audio aligner")
     aligner = AudioAligner(verbose=verbose)
+    logger.info("Audio aligner initialized.")
 
     song_dirs = sorted([d for d in processed_dir.iterdir() if d.is_dir()])
-
     final_metadata = []
 
+    logger.step("Aligning and filtering songs")
     for song_dir in tqdm(song_dirs, desc="[Stage 3] Aligning & Filtering"):
         song_name = song_dir.name
 
@@ -201,20 +204,20 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
         final_cover_json = synced_dir / song_name / "cover.json"
         if final_cover_json.exists():
             if verbose:
-                logger.skip(f"{song_name}: Already processed and filtered.")
+                logger.skip(f"{song_name}: Already processed.")
             final_metadata.append({"dir_name": song_name, "status": "kept"})
             continue
 
         if not all(p.exists() for p in [origin_wav, cover_wav, beat_pred_path, transcription_path]):
-            logger.warn(f"Skipping {song_name}: Missing one or more required input files.")
+            logger.warn(f"Skipping {song_name}: Missing required input files.")
             continue
 
         if verbose:
-            logger.substep(f"Processing {song_name}...")
+            logger.substep(f"Aligning {song_name}...")
 
         align_result = aligner.align(origin_wav, cover_wav, song_dir)
         if not align_result:
-            logger.warn("Alignment failed. Skipping.")
+            logger.warn(f"Skipping {song_name}: Alignment failed.")
             continue
 
         with open(beat_pred_path, 'r') as f:
@@ -223,15 +226,12 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
 
         wp_std = compute_wp_std(time_map)
         if verbose:
-            logger.substep(f"Calculated WP-Std: {wp_std:.4f}")
+            logger.substep(f"WP-Std: {wp_std:.4f}")
 
         if wp_std > wp_std_threshold:
             if verbose:
-                logger.substep(f"Filtering out: WP-Std ({wp_std:.4f}) > Threshold ({wp_std_threshold})")
+                logger.substep(f"Filtered out: WP-Std exceeds threshold ({wp_std_threshold}).")
             continue
-
-        if verbose:
-            logger.substep("Keeping: WP-Std is within tolerance.")
 
         with open(transcription_path, 'r') as f:
             transcription_notes = json.load(f)
@@ -249,7 +249,7 @@ def run_stage_3_align_and_filter(config: dict, verbose: bool = False):
     with open(metadata_path, 'w') as f:
         json.dump(final_metadata, f, indent=4)
 
-    logger.info(f"Stage 3: Align & Filter complete. Final metadata saved to {metadata_path}")
+    logger.info(f"Align & filter complete. Metadata saved to: {metadata_path}")
 
 
 def run_stage_4_extract(config: dict, verbose: bool = False):
@@ -263,17 +263,23 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
     raw_dir = Path(config['download']['output_dir'])
     output_base_dir = Path(config['align_and_filter']['output_dir'])
 
+    logger.step("Loading metadata")
     metadata_path = output_base_dir / "metadata.json"
     if not metadata_path.exists():
-        logger.error(f"Metadata file not found at {metadata_path}. Cannot proceed. Please run Stage 3 first.")
+        logger.error(f"Metadata not found at: {metadata_path}")
+        logger.substep("Run Stage 3 first to generate metadata.")
         sys.exit(1)
     with open(metadata_path, 'r') as f:
         songs_to_process = json.load(f)
+    logger.info(f"Loaded metadata with {len(songs_to_process)} entries.")
 
+    logger.step("Loading extraction model")
     with open(stage_config['config_path'], 'r') as f:
         amt_config = yaml.safe_load(f)
     extractor = AMTAPC_Extractor(config=amt_config, model_path=stage_config['model_path'])
+    logger.info("Extraction model loaded.")
 
+    logger.step("Extracting condition notes")
     for song_info in tqdm(songs_to_process, desc="[Stage 4] Extracting"):
         if song_info.get("status") != "kept":
             continue
@@ -288,19 +294,18 @@ def run_stage_4_extract(config: dict, verbose: bool = False):
             continue
 
         if not origin_wav_path.exists():
-            if verbose:
-                logger.warn(f"Skipping {song_name}: origin.wav not found.")
+            logger.warn(f"Skipping {song_name}: origin.wav not found.")
             continue
 
         if verbose:
-            logger.substep(f"Extracting notes from origin.wav for {song_name}...")
+            logger.substep(f"Extracting {song_name}...")
 
         extractor.extract(
             audio_path=str(origin_wav_path),
             output_json_path=str(output_json_path)
         )
 
-    logger.info("Stage 4: Condition note extraction complete.")
+    logger.info("Condition note extraction complete.")
 
 
 def run_stage_5_tokenize(config: dict, verbose: bool = False):
@@ -317,27 +322,29 @@ def run_stage_5_tokenize(config: dict, verbose: bool = False):
     vocab_path = Path(config['tokenize']['vocab_path'])
     save_format = config['tokenize']['save_format']
 
+    logger.step("Loading metadata")
     metadata_path = source_dir / "metadata.json"
     if not metadata_path.exists():
-        logger.error(f"Metadata file not found at {metadata_path}. Cannot proceed with tokenization.")
+        logger.error(f"Metadata not found at: {metadata_path}")
         sys.exit(1)
 
     with open(metadata_path, 'r') as f:
         songs_to_process = json.load(f)
+    logger.info(f"Loaded metadata with {len(songs_to_process)} entries.")
 
+    logger.step("Loading vocabulary")
     if vocab_path.exists():
-        if verbose:
-            logger.info(f"Existing vocabulary found at {vocab_path}. Loading...")
         vocab = Vocab.load(vocab_path)
+        logger.info(f"Loaded existing vocabulary from: {vocab_path}")
         needs_vocab_build = False
     else:
-        if verbose:
-            logger.info("No vocabulary found. It will be built from the dataset.")
+        logger.info("No vocabulary found. Will build from dataset.")
         needs_vocab_build = True
 
     all_src_events, all_tgt_events = [], []
     processed_song_dirs = []
 
+    logger.step("Tokenizing songs")
     for song_info in tqdm(songs_to_process, desc="[Stage 5] Tokenizing"):
         if song_info.get("status") != "kept":
             continue
@@ -350,8 +357,7 @@ def run_stage_5_tokenize(config: dict, verbose: bool = False):
         tgt_path = current_song_dir / "cover.json"
 
         if not all(p.exists() for p in [tempo_path, src_path, tgt_path]):
-            if verbose:
-                logger.warn(f"Skipping {song_name}: Missing required json files for tokenization.")
+            logger.warn(f"Skipping {song_name}: Missing required files.")
             continue
 
         src_tokenizer = TinyREMITokenizer(tempo_path)
@@ -366,22 +372,21 @@ def run_stage_5_tokenize(config: dict, verbose: bool = False):
             processed_song_dirs.append(song_name)
 
     if not processed_song_dirs:
-        logger.error("No valid song pairs found to tokenize. Exiting.")
+        logger.error("No valid song pairs found to tokenize.")
         sys.exit(1)
+    logger.info(f"Tokenized {len(processed_song_dirs)} song pairs.")
 
     if needs_vocab_build:
-        if verbose:
-            logger.info(f"Building vocabulary from {len(processed_song_dirs)} processed song pairs...")
+        logger.step("Building vocabulary")
+        logger.substep(f"Building from {len(processed_song_dirs)} song pairs...")
         special_tokens = [PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN]
         vocab = Vocab(special_tokens=special_tokens)
         vocab.build_from_events(all_src_events + all_tgt_events)
         vocab.save(vocab_path)
-        if verbose:
-            logger.info(f"Vocabulary with {len(vocab)} tokens saved to {vocab_path}")
+        logger.info(f"Vocabulary ({len(vocab)} tokens) saved to: {vocab_path}")
 
-    if verbose:
-        logger.info(f"Encoding {len(processed_song_dirs)} pairs into integer sequences...")
-
+    logger.step("Encoding sequences")
+    logger.substep(f"Encoding {len(processed_song_dirs)} pairs...")
     for i, song_name in enumerate(tqdm(processed_song_dirs, desc="[Stage 5] Encoding")):
         output_subdir = tokenized_dir / f"{i+1:04d}"
         output_subdir.mkdir(parents=True, exist_ok=True)
@@ -392,7 +397,7 @@ def run_stage_5_tokenize(config: dict, verbose: bool = False):
         vocab.encode_and_save_sequence(all_src_events[i], src_output_path, format=save_format)
         vocab.encode_and_save_sequence(all_tgt_events[i], tgt_output_path, format=save_format)
 
-    logger.info(f"Stage 5: Tokenization complete. Final dataset saved to {tokenized_dir.resolve()}")
+    logger.info(f"Tokenization complete. Dataset saved to: {tokenized_dir.resolve()}")
 
 
 def main():

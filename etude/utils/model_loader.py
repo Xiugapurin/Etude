@@ -17,6 +17,8 @@ def load_etude_decoder(
     Initializes an EtudeDecoder model and loads a checkpoint.
     This version handles the '_orig_mod.' prefix and uses strict loading.
     """
+    logger.step("Loading decoder model")
+
     if device == 'auto':
         if torch.cuda.is_available():
             device = "cuda"
@@ -25,15 +27,13 @@ def load_etude_decoder(
         else:
             device = "cpu"
 
-    logger.info(f"Loading model...")
-    logger.step(f"Loading model configuration from: {config_path}")
+    logger.substep("Loading model configuration...")
     config = EtudeDecoderConfig.from_json_file(str(config_path))
 
     model = EtudeDecoder(config)
-    logger.step(f"Model initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
 
     if checkpoint_path:
-        logger.step(f"Loading checkpoint from: {checkpoint_path}")
+        logger.substep("Loading checkpoint weights...")
         state_dict = torch.load(checkpoint_path, map_location=device)
 
         # Extract the model's state dict if it's in a payload
@@ -47,7 +47,6 @@ def load_etude_decoder(
 
         # Load with strict=True to ensure a perfect match
         model.load_state_dict(cleaned_state_dict, strict=True)
-        logger.substep("Checkpoint loaded successfully.")
             
     model.to(device)
     model.eval()

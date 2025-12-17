@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--versions", nargs='+', help="Specify which versions to evaluate. Runs all by default.")
     parser.add_argument("--output-csv", type=str, help="Path to save the raw results to a CSV file.")
     parser.add_argument("--no-report", action="store_true", help="Only run calculations and save CSV, do not print summary or plot.")
-    
+
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
@@ -25,20 +25,23 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Run the calculations
+    logger.step("Running evaluation")
     runner = EvaluationRunner(config)
     results_df = runner.run(versions_to_run=args.versions, metrics_to_run=args.metrics)
 
     if results_df.empty:
-        logger.warn("No valid data could be processed. Aborting.")
+        logger.warn("No valid data could be processed.")
         return
 
-    # 2. Save raw data if requested
+    # 2. Save raw data
+    logger.step("Saving results")
     csv_path = args.output_csv or Path(config['output_dir']) / config['report_csv_filename']
     results_df.to_csv(csv_path, index=False)
-    logger.info(f"Raw results saved to: {csv_path}")
+    logger.info(f"Results saved to: {csv_path}")
 
-    # 3. Generate report and plot unless suppressed
+    # 3. Generate report unless suppressed
     if not args.no_report:
+        logger.step("Generating report")
         reporter = ReportGenerator(results_df, config)
         reporter.print_summary()
 

@@ -84,14 +84,14 @@ class Vocab:
             event_sequences (List[List[Event]]): A list of event sequences to build the vocabulary from.
         """
         if self.verbose:
-            logger.info("Building vocabulary from event sequences.")
+            logger.substep("Building vocabulary from event sequences...")
 
         for seq in event_sequences:
             for event in seq:
                 self._add_token(str(event))
 
         if self.verbose:
-            logger.substep(f"Vocabulary built. Total unique tokens: {len(self)}")
+            logger.info(f"Vocabulary built with {len(self)} unique tokens.")
 
     def encode(self, token: Union[str, Event]) -> int:
         """
@@ -195,9 +195,11 @@ class Vocab:
     @classmethod
     def load(cls, filepath: Union[str, Path]) -> 'Vocab':
         """Loads the vocabulary from a JSON file."""
+        logger.step("Loading vocabulary")
+
         filepath = Path(filepath)
         if not filepath.exists():
-            raise FileNotFoundError(f"[ERROR] Vocabulary file not found: {filepath}")
+            raise FileNotFoundError(f"Vocabulary file not found: {filepath}")
 
         with open(filepath, 'r', encoding='utf-8') as f:
             vocab_data = json.load(f)

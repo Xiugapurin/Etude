@@ -73,7 +73,7 @@ class AudioAligner:
             origin_audio, _ = librosa.load(str(origin_audio_path), sr=self.fs)
             cover_audio, _ = librosa.load(str(cover_audio_path), sr=self.fs)
         except Exception as e:
-            logger.error(f"Failed to load audio files for alignment: {e}")
+            logger.warn(f"Failed to load audio files for alignment: {e}")
             return None
 
         # Compute the full result from scratch.

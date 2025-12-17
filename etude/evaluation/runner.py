@@ -61,7 +61,6 @@ class EvaluationRunner:
             song_dir = self.eval_dir / dir_name
 
             for version in versions_to_run:
-                pbar.set_postfix_str(f"Song: {dir_name}, Version: {version}")
                 result_row = {'song': dir_name, 'version': version}
                 
                 # --- WPD Calculation Block ---
@@ -78,7 +77,7 @@ class EvaluationRunner:
                         else:
                             result_row.update(res)
                     else:
-                        logger.info(f"Skipping WPD for '{dir_name}/{version}' as alignment could not be performed (check for missing .wav files if cache is empty).")
+                        logger.skip(f"WPD for '{dir_name}/{version}': Alignment unavailable.")
                 
                 # --- RGC/IPE Calculation Block ---
                 mid_path = song_dir / f"{version}.mid"

@@ -24,7 +24,7 @@ class Trainer:
     def __init__(self, config: Dict):
         self.config = config
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
+
         # --- Setup Environment and Paths ---
         set_seed(self.config['environment']['seed'])
         run_id = self.config['environment']['run_id'] or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -34,18 +34,19 @@ class Trainer:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run ID: {run_id}")
         logger.info(f"Device: {self.device}")
-        logger.info(f"Checkpoints and logs will be saved to: {self.run_dir.resolve()}")
+        logger.info(f"Output directory: {self.run_dir.resolve()}")
 
         # --- Load Data ---
-        logger.substep("Loading vocabulary and dataset...")
+        logger.step("Loading vocabulary and dataset")
+        logger.substep("Loading vocabulary...")
         vocab = Vocab.load(self.config['data']['vocab_path'])
         self.model_config = self._create_model_config(vocab)
 
         model_config_save_path = self.run_dir / "etude_decoder_config.json"
         with open(model_config_save_path, 'w') as f:
             json.dump(self.model_config.to_dict(), f, indent=2)
-        logger.substep(f"Final model configuration saved to: {model_config_save_path}")
-        
+
+        logger.substep("Loading dataset...")
         dataset = EtudeDataset(
             dataset_dir=self.config['data']['dataset_dir'],
             vocab=vocab,
@@ -60,9 +61,11 @@ class Trainer:
             shuffle=True,
             num_workers=self.config['data']['num_workers']
         )
-        
+        logger.info(f"Loaded {len(dataset)} training samples.")
+
         # --- Initialize Model, Optimizer, Scheduler ---
-        logger.substep("Initializing model, optimizer, and scheduler...")
+        logger.step("Initializing model and optimizer")
+        logger.substep("Building model...")
         self.model = EtudeDecoder(self.model_config).to(self.device)
         self.optimizer = optim.AdamW(
             self.model.parameters(),
@@ -71,11 +74,13 @@ class Trainer:
             weight_decay=self.config['training']['weight_decay']
         )
         self.scheduler = self._create_scheduler()
-        
+        logger.info("Model and optimizer initialized.")
+
         # --- Resume from Checkpoint if specified ---
         self.start_epoch, self.global_step = 0, 0
         resume_run_id = self.config['checkpoint'].get('resume_from_checkpoint')
         if resume_run_id:
+            logger.step("Resuming from checkpoint")
             resume_dir = self.output_dir / resume_run_id
             self.start_epoch, self.global_step = load_checkpoint(
                 resume_dir, self.model, self.optimizer, self.scheduler, self.device
@@ -105,7 +110,7 @@ class Trainer:
 
     def train(self):
         """Runs the main training loop."""
-        logger.info("Beginning training loop...")
+        logger.step("Starting training")
         scaler = torch.amp.GradScaler(enabled=(self.device == "cuda"))
         self.model.train()
         

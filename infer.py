@@ -42,8 +42,8 @@ class InferencePipeline:
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Device: {self.device}")
-        logger.info(f"Final outputs will be saved to: {self.output_dir.resolve()}")
-        logger.info(f"Intermediate files are stored in: {self.work_dir.resolve()}")
+        logger.info(f"Output directory: {self.output_dir.resolve()}")
+        logger.info(f"Working directory: {self.work_dir.resolve()}")
 
     def _run_command(self, command: list):
         """Helper to run a command and check for errors."""
@@ -56,20 +56,23 @@ class InferencePipeline:
 
     def _prepare_audio(self, source: str) -> Path:
         """Ensures the source audio is available locally in the working directory."""
-        logger.step("Preparing source audio.")
+        logger.step("Preparing source audio")
         local_audio_path = self.work_dir / "origin.wav"
 
         if urlparse(source).scheme in ('http', 'https'):
+            logger.substep("Downloading from URL...")
             success = download_audio_from_url(source, local_audio_path)
             if not success:
-                logger.error("Audio download failed. Exiting.")
+                logger.error("Audio download failed.")
                 sys.exit(1)
         elif Path(source).is_file():
+            logger.substep("Copying local file...")
             shutil.copy(source, local_audio_path)
         else:
             logger.error(f"Input source '{source}' is not a valid URL or local file.")
             sys.exit(1)
 
+        logger.info(f"Audio prepared at: {local_audio_path}")
         return local_audio_path
 
     def _run_stage1_extract(self, audio_path: Path):
@@ -79,20 +82,21 @@ class InferencePipeline:
         with open(extract_config['config_path'], 'r') as f:
             amtapc_config = yaml.safe_load(f)
 
+        logger.step("Running AMT feature extraction")
         extractor = AMTAPC_Extractor(config=amtapc_config, model_path=extract_config['model_path'], device=self.device)
-        logger.step("Running AMT feature extraction.")
+        logger.substep("Extracting notes from audio...")
         extractor.extract(
             audio_path=str(audio_path),
             output_json_path=str(self.work_dir / "extract.json")
         )
+        logger.info("Feature extraction complete.")
 
-        logger.step("Analyzing volume contour.")
-
+        logger.step("Analyzing volume contour")
         volume_map_output_path = self.work_dir / "volume.json"
+        logger.substep("Computing volume map...")
         volume_map = analyze_volume(audio_path)
         save_volume_map(volume_map, volume_map_output_path)
-
-        logger.substep(f"Volume map saved successfully to: {volume_map_output_path}")
+        logger.info(f"Volume map saved to: {volume_map_output_path}")
 
     def _run_stage2_structuralize(self, audio_path: Path):
         """Runs the beat detection and tempo analysis process."""
@@ -100,17 +104,17 @@ class InferencePipeline:
 
         separation_backend = self.project_config['env'].get('separation_backend', 'spleeter')
 
+        logger.step("Running source separation")
         if separation_backend == 'demucs':
-            # Demucs runs in main environment
+            logger.substep("Using Demucs backend...")
             separation_cmd = [
                 sys.executable, "scripts/run_separation.py",
                 "--input", str(audio_path),
                 "--output", str(self.work_dir / "sep.npy"),
                 "--backend", "demucs"
             ]
-            logger.step("Running source separation (Demucs) for beat detection...")
         else:
-            # Spleeter requires separate conda environment
+            logger.substep("Using Spleeter backend...")
             separation_cmd = [
                 "conda", "run", "-n", self.project_config['env']['spleeter_env_name'],
                 "python", "scripts/run_separation.py",
@@ -118,11 +122,10 @@ class InferencePipeline:
                 "--output", str(self.work_dir / "sep.npy"),
                 "--backend", "spleeter"
             ]
-            logger.step("Running source separation (Spleeter) for beat detection...")
-
         self._run_command(separation_cmd)
+        logger.info("Source separation complete.")
 
-        # Beat detection now runs in main environment (madmom is installed)
+        logger.step("Running beat detection")
         beat_detection_cmd = [
             sys.executable, "scripts/run_beat_detection.py",
             "--input_npy", str(self.work_dir / "sep.npy"),
@@ -130,13 +133,16 @@ class InferencePipeline:
             "--model_path", self.config['structuralize']['beat_model_path'],
             "--config_path", self.config['structuralize']['config_path']
         ]
-        logger.step("Running beat detection...")
+        logger.substep("Detecting beats and downbeats...")
         self._run_command(beat_detection_cmd)
+        logger.info("Beat detection complete.")
 
-        logger.step("Analyzing beats to generate tempo structure...")
+        logger.step("Generating tempo structure")
+        logger.substep("Analyzing beat patterns...")
         beat_analyzer = BeatAnalyzer()
         tempo_data = beat_analyzer.analyze(self.work_dir / "beat_pred.json")
         beat_analyzer.save_tempo_data(tempo_data, self.work_dir / "tempo.json")
+        logger.info("Tempo structure generated.")
 
     def _run_stage3_decode(self, target_attributes: dict, final_filename: str):
         """Runs the final music generation based on the intermediate files."""
@@ -144,20 +150,22 @@ class InferencePipeline:
 
         decode_config = self.config['decoder']
         model = load_etude_decoder(decode_config['config_path'], decode_config['model_path'], self.device)
-
-        logger.step(f"loading vocabulary from: {decode_config['vocab_path']}")
+        
         vocab = Vocab.load(decode_config['vocab_path'])
+        logger.info("Model and vocabulary loaded.")
 
+        logger.step("Preparing input sequence")
+        logger.substep("Tokenizing condition events...")
         tokenizer = TinyREMITokenizer(tempo_path=self.work_dir / "tempo.json")
-
         condition_events = tokenizer.encode(str(self.work_dir / "extract.json"))
         condition_ids = vocab.encode_sequence(condition_events)
-
         all_x_bars = tokenizer.split_sequence_into_bars(condition_ids, vocab.get_bar_bos_id(), vocab.get_bar_eos_id())
         num_bars = len(all_x_bars)
         target_attributes_per_bar = [target_attributes] * num_bars
+        logger.info(f"Prepared {num_bars} bars for generation.")
 
-        logger.step(f"Generating {num_bars} bars of music.")
+        logger.step("Generating piano cover")
+        logger.substep(f"Generating {num_bars} bars...")
         generated_events = model.generate(
             vocab=vocab,
             all_x_bars=all_x_bars,
@@ -167,7 +175,8 @@ class InferencePipeline:
         )
 
         if generated_events:
-            logger.step("Decoding generated events into final MIDI.")
+            logger.step("Exporting to MIDI")
+            logger.substep("Decoding events to notes...")
             final_notes = tokenizer.decode_to_notes(
                 events=generated_events,
                 volume_map_path=self.work_dir / "volume.json"
@@ -187,12 +196,13 @@ class InferencePipeline:
             self._run_stage2_structuralize(audio_path)
         else:
             # --- Decode-only shortcut ---
-            logger.info("Skipping Stages 1 & 2.")
+            logger.skip("Skipping Stages 1 & 2 (decode-only mode).")
+            logger.step("Verifying intermediate files")
             required_files = ["extract.json", "tempo.json", "volume.json"]
             for f_name in required_files:
                 if not (self.work_dir / f_name).exists():
-                    logger.error(f"Decode-only mode failed: Missing required file '{f_name}' in {self.work_dir}")
-                    logger.substep("Please run the full pipeline once without the flag to generate these files.")
+                    logger.error(f"Missing required file '{f_name}' in {self.work_dir}")
+                    logger.substep("Run the full pipeline once to generate these files.")
                     sys.exit(1)
             logger.info("All required intermediate files found.")
 

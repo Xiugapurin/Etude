@@ -3,19 +3,44 @@
 """
 Logging system for Etude project.
 
-Usage:
-    from etude.utils.logger import logger
+## Method Selection Guide (Scheme A: Strict Layering)
 
-    logger.info("Device initialized")
-    logger.warn("File not found, using default")
-    logger.error("Failed to load model")
-    logger.debug("Tensor shape: (32, 128)")  # Only shown when level=DEBUG
-    logger.stage(1, "Extracting features")
-    logger.substep("Loading audio file")
-    logger.skip("Already processed")
-    logger.success("Pipeline completed")
+| Method      | Purpose                        | Format              |
+|-------------|--------------------------------|---------------------|
+| stage()     | Pipeline major stage header    | ===== Stage N: X =====
+| step()      | Action declaration (BEFORE)    | " • Message"  (no punctuation)
+| substep()   | Action in progress (DURING)    | "    | Message..."  (with ...)
+| info()      | Result notification (AFTER)    | "[INFO] Message."  (with period)
+| success()   | Final success message          | "[SUCCESS] Message."
+| warn()      | Warning message                | "[WARN] Message."
+| error()     | Error message (to stderr)      | "[ERROR] Message."
+| skip()      | Skipped operation              | "[SKIP] Message."
+| debug()     | Debug info (verbose only)      | "[DEBUG] Message"
 
-Environment Variables:
+## Format Conventions
+
+1. Capitalization: Always start with uppercase letter
+2. Colons: Use before paths - "Saved to: {path}"
+3. Periods: Use for completed actions - "Download complete."
+4. Ellipsis: Use for in-progress actions - "Processing..."
+5. Paths: Use .resolve() for full paths in user-facing messages
+
+## Examples
+
+    # Action declaration (step) - no punctuation
+    logger.step("Preparing source audio")
+    logger.step(f"Loading model from: {path}")
+
+    # In-progress detail (substep) - with ...
+    logger.substep("Initializing separator...")
+    logger.substep(f"Processing {name}...")
+
+    # Completion notification (info) - with period
+    logger.info("Download complete.")
+    logger.info(f"Saved to: {path.resolve()}")
+
+## Environment Variables
+
     ETUDE_LOG_LEVEL: DEBUG, INFO, WARN, ERROR (default: INFO)
     ETUDE_NO_COLOR: Set to disable colored output
 """
@@ -215,9 +240,22 @@ class EtudeLogger:
         prefix = "    " * indent + "| "
         print(f"{prefix}{message}")
 
-    def section(self, title: str) -> None:
+    # === Report formatting ===
+
+    def report_header(self, title: str) -> None:
+        """Print a report header with borders."""
+        if self._level > LogLevel.INFO:
+            return
+
+        border = "=" * 40
+        formatted = f"\n{border} {title} {border}\n"
+        if self._use_color:
+            formatted = self._colorize(formatted, "STAGE")
+        print(formatted)
+
+    def report_section(self, title: str) -> None:
         """
-        Log a section header (smaller than stage).
+        Print a section header.
 
         Args:
             title: Section title
@@ -226,25 +264,21 @@ class EtudeLogger:
             return
 
         header = f" {title} "
-        border = "-" * 20
-        formatted = f"\n{border}{header}{border}"
+        border = "-" * 40
+        formatted = f"\n{border}{header}{border}\n"
+        if self._use_color:
+            formatted = self._colorize(formatted, "INFO")
         print(formatted)
-
-    # === Report formatting ===
-
-    def report_header(self, title: str) -> None:
-        """Print a report header with borders."""
-        if self._level > LogLevel.INFO:
-            return
-
-        border = "=" * 25
-        print(f"\n{border} {title} {border}")
 
     def report_separator(self, width: int = 75) -> None:
         """Print a separator line."""
         if self._level > LogLevel.INFO:
             return
-        print("=" * width)
+
+        formatted = f"\n{'=' * width}\n"
+        if self._use_color:
+            formatted = self._colorize(formatted, "STAGE")
+        print(formatted)
 
 
 # Global singleton instance
