@@ -20,7 +20,7 @@ env:
   # Audio separation backend for beat detection
   # - "spleeter": Higher quality, requires separate conda environment
   # - "demucs": Runs in main environment (macOS compatible)
-  separation_backend: "demucs"
+  separation_backend: "spleeter"
 
   # Conda environment name for Spleeter (only used when separation_backend is "spleeter")
   spleeter_env_name: "py38_spleeter"
