@@ -4,12 +4,12 @@ import argparse
 import sys
 from pathlib import Path
 import subprocess
+import json
 
 import pandas as pd
-import yaml
-import json
 from tqdm import tqdm
 
+from etude.config import load_config, EtudeConfig
 from etude.utils.download import download_audio_from_url
 from etude.utils.logger import logger
 from etude.models.hft_transformer import HFT_Transformer
@@ -25,15 +25,15 @@ from etude.data.extractor import AMTAPC_Extractor
 from etude.data.tokenizer import TinyREMITokenizer
 from etude.data.vocab import Vocab, PAD_TOKEN, UNK_TOKEN, BOS_TOKEN, EOS_TOKEN
 
-def run_stage_1_download(config: dict):
+
+def run_stage_1_download(config: EtudeConfig):
     """
     Handles Stage 1: Downloading all raw audio files from the source CSV.
     """
     logger.stage(1, "Downloading Raw Audio")
 
-    stage_config = config['download']
-    csv_path = Path(stage_config['csv_path'])
-    output_dir = Path(stage_config['output_dir'])
+    csv_path = config.paths.dataset_csv
+    output_dir = config.paths.raw_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.step("Loading source CSV")
@@ -83,37 +83,28 @@ def run_stage_1_download(config: dict):
         logger.info("Download complete.")
 
 
-def run_stage_2_preprocess(config: dict):
+def run_stage_2_preprocess(config: EtudeConfig):
     """
     Handles Stage 2: Generates all intermediate analysis files
     (beat_pred.json, tempo.json, transcription.json).
     """
     logger.stage(2, "Preprocessing")
 
-    raw_dir = Path(config['download']['output_dir'])
-    processed_dir = Path(config['preprocess']['output_dir'])
+    raw_dir = config.paths.raw_dir
+    processed_dir = config.paths.processed_dir
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    with open("configs/project_config.yaml", 'r') as f:
-        project_config = yaml.safe_load(f)
-
     logger.step("Loading transcription model")
-    with open(config['preprocess']['hft_transformer']['feature_config_path'], 'r') as f:
-        hft_feature_config = json.load(f)
-
     transcriber = HFT_Transformer(
-        config=hft_feature_config,
-        model_path=config['preprocess']['hft_transformer']['model_path']
+        config=config.hft,
+        model_path=config.paths.hft_model,
     )
     logger.info("Transcription model loaded.")
 
     logger.step("Loading beat detection model")
-    with open(config['preprocess']['config_path'], 'r') as f:
-        beat_config = yaml.safe_load(f)['beat_detection']
-
     beat_detector = BeatDetector(
-        config=beat_config,
-        model_path=config['preprocess']['beat_model_path']
+        config=config.beat_detector,
+        model_path=config.paths.beat_detector_model,
     )
     logger.info("Beat detection model loaded.")
 
@@ -138,7 +129,6 @@ def run_stage_2_preprocess(config: dict):
             transcriber.transcribe(
                 input_wav_path=cover_wav,
                 output_json_path=transcription_json,
-                inference_params=config['preprocess']['hft_transformer']['inference_params']
             )
 
         # --- Beat Detection (for origin.wav) ---
@@ -154,7 +144,7 @@ def run_stage_2_preprocess(config: dict):
         else:
             logger.debug(f"Detecting beats for {song_name}...")
 
-            separation_backend = project_config['env'].get('separation_backend', 'spleeter')
+            separation_backend = config.env.separation_backend
 
             if separation_backend == 'demucs':
                 separation_cmd = [
@@ -165,7 +155,7 @@ def run_stage_2_preprocess(config: dict):
                 ]
             else:
                 separation_cmd = [
-                    "conda", "run", "-n", project_config['env']['spleeter_env_name'],
+                    "conda", "run", "-n", config.env.spleeter_env_name,
                     "python", "scripts/run_separation.py",
                     "--input", str(origin_wav),
                     "--output", str(sep_npy_path),
@@ -187,19 +177,19 @@ def run_stage_2_preprocess(config: dict):
     logger.info("Preprocessing complete.")
 
 
-def run_stage_3_align_and_filter(config: dict):
+def run_stage_3_align_and_filter(config: EtudeConfig):
     """
     Handles Stage 3: Aligns transcriptions, filters based on wp-std,
     and prepares the final synced data.
     """
     logger.stage(3, "Align & Filter")
 
-    raw_dir = Path(config['download']['output_dir'])
-    processed_dir = Path(config['preprocess']['output_dir'])
-    synced_dir = Path(config['align_and_filter']['output_dir'])
+    raw_dir = config.paths.raw_dir
+    processed_dir = config.paths.processed_dir
+    synced_dir = config.paths.aligned_dir
     synced_dir.mkdir(parents=True, exist_ok=True)
 
-    wp_std_threshold = config['align_and_filter']['wp_std_threshold']
+    wp_std_threshold = config.prepare.align.wp_std_threshold
 
     logger.step("Initializing audio aligner")
     aligner = AudioAligner()
@@ -264,16 +254,15 @@ def run_stage_3_align_and_filter(config: dict):
     logger.info(f"Align & filter complete. Metadata saved to: {metadata_path}")
 
 
-def run_stage_4_extract(config: dict):
+def run_stage_4_extract(config: EtudeConfig):
     """
     Handles Stage 4: Extracts notes from the ORIGINAL song (origin.wav) to be used
     as the condition for the decoder model.
     """
     logger.stage(4, "Extracting Condition Notes")
 
-    stage_config = config['extract']
-    raw_dir = Path(config['download']['output_dir'])
-    output_base_dir = Path(config['align_and_filter']['output_dir'])
+    raw_dir = config.paths.raw_dir
+    output_base_dir = config.paths.aligned_dir
 
     logger.step("Loading metadata")
     metadata_path = output_base_dir / "metadata.json"
@@ -286,9 +275,10 @@ def run_stage_4_extract(config: dict):
     logger.info(f"Loaded metadata with {len(songs_to_process)} entries.")
 
     logger.step("Loading extraction model")
-    with open(stage_config['config_path'], 'r') as f:
-        amt_config = yaml.safe_load(f)
-    extractor = AMTAPC_Extractor(config=amt_config, model_path=stage_config['model_path'])
+    extractor = AMTAPC_Extractor(
+        config=config.extractor,
+        model_path=config.paths.extractor_model,
+    )
     logger.info("Extraction model loaded.")
 
     logger.step("Extracting condition notes")
@@ -318,19 +308,20 @@ def run_stage_4_extract(config: dict):
     logger.info("Condition note extraction complete.")
 
 
-def run_stage_5_tokenize(config: dict):
+def run_stage_5_tokenize(config: EtudeConfig):
     """
     Handles Stage 5: Tokenizes the filtered data, builds a vocabulary if needed,
     and saves the final sequences for training.
     """
     logger.stage(5, "Tokenizing Final Dataset")
 
-    source_dir = Path(config['align_and_filter']['output_dir'])
-    tokenized_dir = Path(config['tokenize']['output_dir'])
+    source_dir = config.paths.aligned_dir
+    tokenized_dir = config.paths.tokenized_dir
     tokenized_dir.mkdir(parents=True, exist_ok=True)
 
-    vocab_path = Path(config['tokenize']['vocab_path'])
-    save_format = config['tokenize']['save_format']
+    vocab_path = config.paths.dataset_vocab
+    save_format = config.prepare.tokenize.save_format
+    processed_dir = config.paths.processed_dir
 
     logger.step("Loading metadata")
     metadata_path = source_dir / "metadata.json"
@@ -362,7 +353,7 @@ def run_stage_5_tokenize(config: dict):
         song_name = song_info["dir_name"]
         current_song_dir = source_dir / song_name
 
-        tempo_path = Path(config['preprocess']['output_dir']) / song_name / "tempo.json"
+        tempo_path = processed_dir / song_name / "tempo.json"
         src_path = current_song_dir / "extract.json"
         tgt_path = current_song_dir / "cover.json"
 
@@ -416,8 +407,8 @@ def main():
         description="End-to-end data preparation pipeline for the Etude project."
     )
     parser.add_argument(
-        "--config", type=str, default="configs/prepare_config.yaml",
-        help="Path to the main data preparation configuration file."
+        "--config", type=str, default="configs/default.yaml",
+        help="Path to the configuration file."
     )
     parser.add_argument(
         "--start-from", type=str, choices=['download', 'preprocess', 'align', 'extract', 'tokenize'],
@@ -429,8 +420,7 @@ def main():
     )
     args = parser.parse_args()
 
-    with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
+    config = load_config(args.config)
 
     # --- Execute Pipeline Stages ---
     pipeline_stages = ['download', 'preprocess', 'align', 'extract', 'tokenize']

@@ -2,11 +2,12 @@
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import pandas as pd
 from tqdm import tqdm
 
+from ..config.schema import EvalConfig
 from ..data.aligner import AudioAligner
 from ..utils.logger import logger
 from .metrics.wpd import WPDCalculator
@@ -17,23 +18,29 @@ from .metrics.ipe import IPECalculator
 class EvaluationRunner:
     """Orchestrates the entire evaluation pipeline."""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: EvalConfig):
         """
-        Initializes the EvaluationRunner with a configuration dictionary.
+        Initializes the EvaluationRunner with a configuration.
 
         Args:
-            config (Dict): The loaded evaluation configuration from a YAML file.
+            config (EvalConfig): The evaluation configuration.
         """
         self.config = config
-        self.eval_dir = Path(config['eval_dir'])
-        self.metadata_path = Path(config['metadata_path'])
+        self.eval_dir = config.eval_dir
+        self.metadata_path = config.metadata_path
 
         # Initialize the tools needed for the evaluation pipeline
         self.aligner = AudioAligner()
         self.calculators = {
-            "wpd": WPDCalculator(**config['metrics'].get('wpd', {})),
-            "rgc": RGCCalculator(**config['metrics'].get('rgc', {})),
-            "ipe": IPECalculator(**config['metrics'].get('ipe', {})),
+            "wpd": WPDCalculator(
+                subsample_step=config.metrics.wpd_subsample_step,
+                trim_seconds=config.metrics.wpd_trim_seconds,
+            ),
+            "rgc": RGCCalculator(top_k=config.metrics.rgc_top_k),
+            "ipe": IPECalculator(
+                n_gram=config.metrics.ipe_n_gram,
+                n_clusters=config.metrics.ipe_n_clusters,
+            ),
         }
 
     def run(self, versions_to_run: Optional[List[str]] = None, metrics_to_run: Optional[List[str]] = None) -> pd.DataFrame:
@@ -41,7 +48,7 @@ class EvaluationRunner:
         Executes the full evaluation run with enhanced error logging.
         """
         if versions_to_run is None:
-            versions_to_run = list(self.config['versions'].keys())
+            versions_to_run = list(self.config.versions.keys())
         if metrics_to_run is None:
             metrics_to_run = list(self.calculators.keys())
 

@@ -54,7 +54,7 @@ The **Structuralize** stage requires audio source separation for beat detection.
 
 Spleeter provides the best beat detection accuracy but requires a separate conda environment.
 
-Create the `spleeter` environment (the environment name must match `configs/project_config.yaml`):
+Create the `spleeter` environment (the environment name must match `configs/default.yaml`):
 
 ```bash
 conda create --name py38_spleeter python=3.8.20 -y
@@ -74,9 +74,9 @@ To use **Demucs**:
    pip install -e ".[demucs]"
    ```
 
-2. Modify `configs/project_config.yaml`:
+2. Modify `configs/default.yaml`:
    ```yaml
-   env:
+   beat_detector:
      separation_backend: "demucs"  # Change from "spleeter" to "demucs"
    ```
 
@@ -104,7 +104,6 @@ checkpoints/
 ├── extractor/
 │   └── latest.pth
 └── hft_transformer/
-    ├── config.json
     └── latest.pkl
 ```
 
@@ -119,6 +118,8 @@ python infer.py --input "https://youtu.be/dQw4w9WgXcQ"
 # From a local audio file
 python infer.py --input "path/to/my/song.wav"
 ```
+
+The generated MIDI file will be saved to `outputs/infer/output.mid`. Intermediate files used for the `--decode-only` mode are stored in `outputs/infer/temp/`.
 
 ---
 
@@ -160,7 +161,7 @@ The `evaluate.py` script is a command-line tool for calculating and analyzing va
 This command will calculate all metrics for all versions specified in your configuration file and generate a full report.
 
 ```bash
-python evaluate.py --config configs/evaluate_config.yaml
+python evaluate.py
 ```
 
 ### Partial & Specific Evaluation
@@ -232,21 +233,20 @@ Once your dataset has been successfully prepared (i.e., the `dataset/tokenized/`
 python train.py
 ```
 
-You can modify all training settings, such as learning rate, batch size, and number of epochs, in the `configs/training_config.yaml` file.
+You can modify all training settings, such as learning rate, batch size, and number of epochs, in the `configs/default.yaml` file under the `train` section.
 
 **4️⃣ Use Your New Model for Inference**
 
 After training is complete, a new run directory will be created (e.g., `outputs/train/your_run_id/`). Inside, you will find your new model weights (`latest.pth`) and the corresponding configuration file (`etude_decoder_config.json`).
 
-To test your new model, remember to update the `configs/inference_config.yaml` file to point to these newly generated files:
+To test your new model, remember to update the `configs/default.yaml` file to point to these newly generated files:
 
 ```yaml
-# In configs/inference_config.yaml
-decoder:
-  model_path: "outputs/train/your_run_id/latest.pth"
-  config_path: "outputs/train/your_run_id/etude_decoder_config.json"
-  vocab_path: "dataset/vocab.json"
-  # ...
+# In configs/default.yaml
+paths:
+  decoder_model: "outputs/train/your_run_id/latest.pth"
+  decoder_config: "outputs/train/your_run_id/etude_decoder_config.json"
+  decoder_vocab: "dataset/vocab.json"
 ```
 
 ---

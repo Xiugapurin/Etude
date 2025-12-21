@@ -5,31 +5,43 @@ import math
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict
 
 import torch
 import torch.optim as optim
-import yaml
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
+from etude.config import load_config, EtudeConfig
 from etude.data.dataset import EtudeDataset
 from etude.models.etude_decoder import EtudeDecoder, EtudeDecoderConfig
 from etude.data.vocab import Vocab
 from etude.utils.training_utils import set_seed, save_checkpoint, load_checkpoint
 from etude.utils.logger import logger
 
+
 class Trainer:
     """Encapsulates the entire training process."""
-    def __init__(self, config: Dict):
+
+    def __init__(self, config: EtudeConfig):
         self.config = config
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.train_cfg = config.train
+        self.decoder_cfg = config.decoder
+
+        # Resolve device
+        self.device = config.env.device
+        if self.device == "auto":
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
 
         # --- Setup Environment and Paths ---
-        set_seed(self.config['environment']['seed'])
-        run_id = self.config['environment']['run_id'] or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        set_seed(config.env.seed)
+        run_id = self.train_cfg.run_id or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        self.output_dir = Path(self.config['checkpoint']['output_dir'])
+        self.output_dir = config.paths.train_output_dir
         self.run_dir = self.output_dir / run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run ID: {run_id}")
@@ -39,7 +51,7 @@ class Trainer:
         # --- Load Data ---
         logger.step("Loading vocabulary and dataset")
         logger.substep("Loading vocabulary...")
-        vocab = Vocab.load(self.config['data']['vocab_path'])
+        vocab = Vocab.load(config.paths.dataset_vocab)
         self.model_config = self._create_model_config(vocab)
 
         model_config_save_path = self.run_dir / "etude_decoder_config.json"
@@ -48,17 +60,17 @@ class Trainer:
 
         logger.substep("Loading dataset...")
         dataset = EtudeDataset(
-            dataset_dir=self.config['data']['dataset_dir'],
+            dataset_dir=config.paths.tokenized_dir,
             vocab=vocab,
             max_seq_len=self.model_config.max_position_embeddings,
-            data_format=self.config['data']['data_format'],
+            data_format=self.train_cfg.data_format,
             num_attribute_bins=self.model_config.num_attribute_bins,
             context_num_past_xy_pairs=self.model_config.context_num_past_xy_pairs
         )
         self.dataloader = dataset.get_dataloader(
-            self.config['training']['batch_size'],
+            self.train_cfg.batch_size,
             shuffle=True,
-            num_workers=self.config['data']['num_workers']
+            num_workers=self.train_cfg.num_workers
         )
         logger.info(f"Loaded {len(dataset)} training samples.")
 
@@ -68,39 +80,50 @@ class Trainer:
         self.model = EtudeDecoder(self.model_config).to(self.device)
         self.optimizer = optim.AdamW(
             self.model.parameters(),
-            lr=self.config['training']['learning_rate'],
-            betas=(self.config['training']['adam_beta1'], self.config['training']['adam_beta2']),
-            weight_decay=self.config['training']['weight_decay']
+            lr=self.train_cfg.learning_rate,
+            betas=(self.train_cfg.adam_beta1, self.train_cfg.adam_beta2),
+            weight_decay=self.train_cfg.weight_decay
         )
         self.scheduler = self._create_scheduler()
         logger.info("Model and optimizer initialized.")
 
         # --- Resume from Checkpoint if specified ---
         self.start_epoch, self.global_step = 0, 0
-        resume_run_id = self.config['checkpoint'].get('resume_from_checkpoint')
-        if resume_run_id:
+        resume_checkpoint = self.train_cfg.resume_from_checkpoint
+        if resume_checkpoint:
             logger.step("Resuming from checkpoint")
-            resume_dir = self.output_dir / resume_run_id
+            resume_dir = self.output_dir / resume_checkpoint
             self.start_epoch, self.global_step = load_checkpoint(
                 resume_dir, self.model, self.optimizer, self.scheduler, self.device
             )
 
     def _create_model_config(self, vocab: Vocab) -> EtudeDecoderConfig:
-        """Creates the model configuration from the YAML config."""
-        model_cfg_dict = self.config['model'].copy()
-        model_cfg_dict['vocab_size'] = len(vocab)
-        model_cfg_dict['pad_token_id'] = vocab.get_pad_id()
-        
-        return EtudeDecoderConfig(**model_cfg_dict)
+        """Creates the model configuration from the config."""
+        return EtudeDecoderConfig(
+            vocab_size=len(vocab),
+            pad_token_id=vocab.get_pad_id(),
+            hidden_size=self.decoder_cfg.hidden_size,
+            num_hidden_layers=self.decoder_cfg.num_hidden_layers,
+            num_attention_heads=self.decoder_cfg.num_attention_heads,
+            intermediate_size=self.decoder_cfg.intermediate_size,
+            max_position_embeddings=self.decoder_cfg.max_position_embeddings,
+            num_classes=self.decoder_cfg.num_classes,
+            num_attribute_bins=self.decoder_cfg.num_attribute_bins,
+            attribute_emb_dim=self.decoder_cfg.attribute_emb_dim,
+            pad_class_id=self.decoder_cfg.pad_class_id,
+            attribute_pad_id=self.decoder_cfg.attribute_pad_id,
+            context_num_past_xy_pairs=self.decoder_cfg.context_num_past_xy_pairs,
+        )
 
     def _create_scheduler(self):
         """Creates the learning rate scheduler."""
-        cfg = self.config['training']
-        num_epochs = cfg['num_epochs']
-        num_update_steps_per_epoch = math.ceil(len(self.dataloader) / cfg['gradient_accumulation_steps'])
+        num_epochs = self.train_cfg.num_epochs
+        num_update_steps_per_epoch = math.ceil(
+            len(self.dataloader) / self.train_cfg.gradient_accumulation_steps
+        )
         total_training_steps = num_update_steps_per_epoch * num_epochs
-        warmup_steps = cfg['warmup_epochs'] * num_update_steps_per_epoch
-        
+        warmup_steps = self.train_cfg.warmup_epochs * num_update_steps_per_epoch
+
         return get_cosine_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=warmup_steps,
@@ -112,17 +135,23 @@ class Trainer:
         logger.step("Starting training")
         scaler = torch.amp.GradScaler(enabled=(self.device == "cuda"))
         self.model.train()
-        
-        for epoch in range(self.start_epoch, self.config['training']['num_epochs']):
-            pbar = tqdm(self.dataloader, desc=f"Epoch {epoch+1}/{self.config['training']['num_epochs']}", unit="batch")
+
+        num_epochs = self.train_cfg.num_epochs
+        grad_accum_steps = self.train_cfg.gradient_accumulation_steps
+        save_every_n = self.train_cfg.save_every_n_epochs
+        clip_grad_norm = self.train_cfg.clip_grad_norm
+
+        for epoch in range(self.start_epoch, num_epochs):
+            pbar = tqdm(self.dataloader, desc=f"Epoch {epoch+1}/{num_epochs}", unit="batch")
             self.optimizer.zero_grad()
-            
+
             for batch_idx, batch in enumerate(pbar):
-                if not batch: continue
-                
+                if not batch:
+                    continue
+
                 # Move batch to device
                 batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
-                
+
                 with torch.amp.autocast(device_type=self.device.split(':')[0], enabled=(self.device == "cuda")):
                     outputs = self.model(
                         input_ids=batch['input_ids'],
@@ -137,25 +166,28 @@ class Trainer:
                     )
                     loss = outputs.loss
 
-                if loss is None or torch.isnan(loss): continue
-                
-                scaler.scale(loss / self.config['training']['gradient_accumulation_steps']).backward()
-                
-                if (batch_idx + 1) % self.config['training']['gradient_accumulation_steps'] == 0:
+                if loss is None or torch.isnan(loss):
+                    continue
+
+                scaler.scale(loss / grad_accum_steps).backward()
+
+                if (batch_idx + 1) % grad_accum_steps == 0:
                     scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['training']['clip_grad_norm'])
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_grad_norm)
                     scaler.step(self.optimizer)
                     scaler.update()
                     self.scheduler.step()
                     self.optimizer.zero_grad(set_to_none=True)
                     self.global_step += 1
-                
-                pbar.set_postfix({"Loss": f"{loss.item():.4f}", "LR": f"{self.scheduler.get_last_lr()[0]:.3e}"})
+
+                pbar.set_postfix({
+                    "Loss": f"{loss.item():.4f}",
+                    "LR": f"{self.scheduler.get_last_lr()[0]:.3e}"
+                })
 
             # --- End of Epoch ---
-            is_save_epoch = ((epoch + 1) % self.config['checkpoint']['save_every_n_epochs'] == 0) or \
-                            ((epoch + 1) == self.config['training']['num_epochs'])
-            
+            is_save_epoch = ((epoch + 1) % save_every_n == 0) or ((epoch + 1) == num_epochs)
+
             save_checkpoint(
                 self.run_dir, self.model, self.optimizer, self.scheduler,
                 epoch, self.global_step, is_epoch_end=is_save_epoch
@@ -163,20 +195,20 @@ class Trainer:
 
         logger.success("Training finished.")
 
+
 def main():
     parser = argparse.ArgumentParser(description="Train the EtudeDecoder model.")
     parser.add_argument(
-        "--config", type=str, default="configs/training_config.yaml",
-        help="Path to the training configuration YAML file."
+        "--config", type=str, default="configs/default.yaml",
+        help="Path to the configuration file."
     )
-
     args = parser.parse_args()
-    
-    with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
-    
+
+    config = load_config(args.config)
+
     trainer = Trainer(config)
     trainer.train()
+
 
 if __name__ == "__main__":
     main()

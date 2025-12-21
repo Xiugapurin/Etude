@@ -12,7 +12,8 @@ https://github.com/misya11p/amt-apc
 Original files: /models/_models.py and /models/hFT_Transformer/amt.py
 """
 
-from typing import Dict, Union, Optional
+from pathlib import Path
+from typing import Union, Optional
 
 import json
 import numpy as np
@@ -22,6 +23,7 @@ import torchaudio
 import pretty_midi
 from tqdm import tqdm
 
+from ..config.schema import ExtractorConfig
 from ..models.amt_apc import (
     Encoder_SPEC2MIDI as Encoder,
     Decoder_SPEC2MIDI as Decoder,
@@ -73,41 +75,41 @@ class _Spec2MIDI(BaseSpec2MIDI):
         )
 
 
-def _load_model(config: Dict, path_model: str, device: torch.device) -> _Spec2MIDI:
+def _load_model(config: ExtractorConfig, path_model: Union[str, Path], device: torch.device) -> _Spec2MIDI:
     """Helper function to construct and load the transcription model."""
     encoder = Encoder(
-        n_margin=config['input']['margin_b'],
-        n_frame=config['input']['num_frame'],
-        n_bin=config['feature']['n_bins'],
-        cnn_channel=config['model']['cnn']['channel'],
-        cnn_kernel=config['model']['cnn']['kernel'],
-        hid_dim=config['model']['transformer']['hid_dim'],
-        n_layers=config['model']['transformer']['encoder']['n_layer'],
-        n_heads=config['model']['transformer']['encoder']['n_head'],
-        pf_dim=config['model']['transformer']['pf_dim'],
-        dropout=config['model']['dropout'],
+        n_margin=config.input.margin_b,
+        n_frame=config.input.num_frame,
+        n_bin=config.feature.n_bins,
+        cnn_channel=config.model.cnn_channel,
+        cnn_kernel=config.model.cnn_kernel,
+        hid_dim=config.model.transformer_hid_dim,
+        n_layers=config.model.encoder_n_layer,
+        n_heads=config.model.encoder_n_head,
+        pf_dim=config.model.transformer_pf_dim,
+        dropout=config.model.dropout,
         device=device,
     )
 
     decoder = Decoder(
-        n_frame=config['input']['num_frame'],
-        n_bin=config['feature']['n_bins'],
-        n_note=config['midi']['num_note'],
-        n_velocity=config['midi']['num_velocity'],
-        hid_dim=config['model']['transformer']['hid_dim'],
-        n_layers=config['model']['transformer']['decoder']['n_layer'],
-        n_heads=config['model']['transformer']['decoder']['n_head'],
-        pf_dim=config['model']['transformer']['pf_dim'],
-        dropout=config['model']['dropout'],
+        n_frame=config.input.num_frame,
+        n_bin=config.feature.n_bins,
+        n_note=config.midi.num_note,
+        n_velocity=config.midi.num_velocity,
+        hid_dim=config.model.transformer_hid_dim,
+        n_layers=config.model.decoder_n_layer,
+        n_heads=config.model.decoder_n_head,
+        pf_dim=config.model.transformer_pf_dim,
+        dropout=config.model.dropout,
         device=device,
     )
 
-    model = _Spec2MIDI(encoder, decoder, sv_dim=0) # sv disabled
+    model = _Spec2MIDI(encoder, decoder, sv_dim=0)  # sv disabled
     state_dict = torch.load(path_model, weights_only=True, map_location=device)
     model.load_state_dict(state_dict, strict=False)
     model.to(device)
     model.eval()
-    
+
     return model
 
 
@@ -115,16 +117,22 @@ class AMTAPC_Extractor:
     """
     A pipeline for converting audio files into musical note representations (JSON/MIDI).
     """
-    def __init__(self, config: Dict, model_path: str, device: Union[str, torch.device] = 'auto'):
+
+    def __init__(
+        self,
+        config: ExtractorConfig,
+        model_path: Union[str, Path],
+        device: Union[str, torch.device] = "auto",
+    ):
         """
         Initializes the extractor.
-        
+
         Args:
-            config (Dict): A dictionary containing configuration parameters.
-            model_path (str): Path to the pre-trained model checkpoint.
-            device (Union[str, torch.device]): The device to run on ('cuda', 'cpu', or 'auto').
+            config: ExtractorConfig containing all extraction parameters.
+            model_path: Path to the pre-trained model checkpoint.
+            device: The device to run on ('cuda', 'mps', 'cpu', or 'auto').
         """
-        if device == 'auto':
+        if device == "auto":
             if torch.cuda.is_available():
                 self.device = torch.device("cuda")
             elif torch.backends.mps.is_available():
@@ -133,7 +141,7 @@ class AMTAPC_Extractor:
                 self.device = torch.device("cpu")
         else:
             self.device = torch.device(device)
-            
+
         self.config = config
         self.model = _load_model(self.config, model_path, self.device)
 
@@ -155,13 +163,13 @@ class AMTAPC_Extractor:
         # Step 3: Convert frame-wise predictions to a list of discrete notes
         notes = self._mpe2note(
             onset, offset, frame, velocity,
-            thred_onset=self.config['infer']['threshold']['onset'],
-            thred_offset=self.config['infer']['threshold']['offset'],
-            thred_mpe=self.config['infer']['threshold']['frame'],
+            thred_onset=self.config.infer.onset_threshold,
+            thred_offset=self.config.infer.offset_threshold,
+            thred_mpe=self.config.infer.frame_threshold,
         )
-        
+
         # Step 4: Save notes to JSON and optionally to MIDI
-        min_duration = self.config['infer']['min_duration']
+        min_duration = self.config.infer.min_duration
         self._note2json(notes, output_json_path, min_duration)
         
         if output_midi_path:
@@ -169,95 +177,92 @@ class AMTAPC_Extractor:
 
     def _wav2feature(self, audio_path: str) -> torch.Tensor:
         """Loads an audio file and converts it into a log-Mel spectrogram."""
-        # This method's content is taken directly from 'amt.py'
         wave, sr = torchaudio.load(audio_path)
         wave_mono = torch.mean(wave, dim=0)
-        
-        resampler = torchaudio.transforms.Resample(sr, self.config['feature']['sr'])
+
+        resampler = torchaudio.transforms.Resample(sr, self.config.feature.sr)
         wave_resampled = resampler(wave_mono)
-        
+
         mel_transformer = torchaudio.transforms.MelSpectrogram(
-            sample_rate=self.config['feature']['sr'],
-            n_fft=self.config['feature']['fft_bins'],
-            win_length=self.config['feature']['window_length'],
-            hop_length=self.config['feature']['hop_sample'],
-            n_mels=self.config['feature']['mel_bins'],
-            norm='slaney'
+            sample_rate=self.config.feature.sr,
+            n_fft=self.config.feature.fft_bins,
+            win_length=self.config.feature.window_length,
+            hop_length=self.config.feature.hop_sample,
+            n_mels=self.config.feature.mel_bins,
+            norm="slaney",
         )
         mel_spec = mel_transformer(wave_resampled)
-        
-        log_mel_spec = torch.log(mel_spec + self.config['feature']['log_offset'])
+
+        log_mel_spec = torch.log(mel_spec + self.config.feature.log_offset)
         return log_mel_spec.T
 
-    def _transcript(self, a_feature, sv=None, silent=True, mode='combination', ablation_flag=False): # Modified from the original (this line)
+    def _transcript(self, a_feature, sv=None, silent=True, mode="combination", ablation_flag=False):
         # a_feature: [num_frame, n_mels]
         a_feature = np.array(a_feature, dtype=np.float32)
 
-        a_tmp_b = np.full([self.config['input']['margin_b'], self.config['feature']['n_bins']], self.config['input']['min_value'], dtype=np.float32)
-        len_s = int(np.ceil(a_feature.shape[0] / self.config['input']['num_frame']) * self.config['input']['num_frame']) - a_feature.shape[0]
-        a_tmp_f = np.full([len_s+self.config['input']['margin_f'], self.config['feature']['n_bins']], self.config['input']['min_value'], dtype=np.float32)
+        margin_b = self.config.input.margin_b
+        margin_f = self.config.input.margin_f
+        num_frame = self.config.input.num_frame
+        n_bins = self.config.feature.n_bins
+        min_value = self.config.input.min_value
+        num_note = self.config.midi.num_note
+
+        a_tmp_b = np.full([margin_b, n_bins], min_value, dtype=np.float32)
+        len_s = int(np.ceil(a_feature.shape[0] / num_frame) * num_frame) - a_feature.shape[0]
+        a_tmp_f = np.full([len_s + margin_f, n_bins], min_value, dtype=np.float32)
         a_input = torch.from_numpy(np.concatenate([a_tmp_b, a_feature, a_tmp_f], axis=0))
-        # a_input: [margin_b+a_feature.shape[0]+len_s+margin_f, n_bins]
 
-        a_output_onset_A = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-        a_output_offset_A = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-        a_output_mpe_A = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-        a_output_velocity_A = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.int8)
+        a_output_onset_A = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+        a_output_offset_A = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+        a_output_mpe_A = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+        a_output_velocity_A = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.int8)
 
-        if mode == 'combination':
-            a_output_onset_B = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-            a_output_offset_B = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-            a_output_mpe_B = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.float32)
-            a_output_velocity_B = np.zeros((a_feature.shape[0]+len_s, self.config['midi']['num_note']), dtype=np.int8)
+        if mode == "combination":
+            a_output_onset_B = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+            a_output_offset_B = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+            a_output_mpe_B = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.float32)
+            a_output_velocity_B = np.zeros((a_feature.shape[0] + len_s, num_note), dtype=np.int8)
 
         self.model.eval()
-        for i in tqdm(range(0, a_feature.shape[0], self.config['input']['num_frame']), desc="Processing each segment", disable=silent): # Modified from the original (this line)
-            input_spec = (a_input[i:i+self.config['input']['margin_b']+self.config['input']['num_frame']+self.config['input']['margin_f']]).T.unsqueeze(0).to(self.device)
+        for i in tqdm(range(0, a_feature.shape[0], num_frame), desc="Processing each segment", disable=silent):
+            input_spec = (a_input[i : i + margin_b + num_frame + margin_f]).T.unsqueeze(0).to(self.device)
 
             with torch.no_grad():
-                if mode == 'combination':
+                if mode == "combination":
                     if ablation_flag is True:
-                        output_onset_A, output_offset_A, output_mpe_A, output_velocity_A, output_onset_B, output_offset_B, output_mpe_B, output_velocity_B = self.model(input_spec, sv) # Modified from the original (this line)
+                        output_onset_A, output_offset_A, output_mpe_A, output_velocity_A, output_onset_B, output_offset_B, output_mpe_B, output_velocity_B = self.model(input_spec, sv)
                     else:
-                        output_onset_A, output_offset_A, output_mpe_A, output_velocity_A, attention, output_onset_B, output_offset_B, output_mpe_B, output_velocity_B = self.model(input_spec, sv) # Modified from the original (this line)
-                    # output_onset: [batch_size, n_frame, n_note]
-                    # output_offset: [batch_size, n_frame, n_note]
-                    # output_mpe: [batch_size, n_frame, n_note]
-                    # output_velocity: [batch_size, n_frame, n_note, n_velocity]
+                        output_onset_A, output_offset_A, output_mpe_A, output_velocity_A, attention, output_onset_B, output_offset_B, output_mpe_B, output_velocity_B = self.model(input_spec, sv)
                 else:
                     output_onset_A, output_offset_A, output_mpe_A, output_velocity_A = self.model(input_spec)
 
-            a_output_onset_A[i:i+self.config['input']['num_frame']] = (output_onset_A.squeeze(0)).to('cpu').detach().numpy()
-            a_output_offset_A[i:i+self.config['input']['num_frame']] = (output_offset_A.squeeze(0)).to('cpu').detach().numpy()
-            a_output_mpe_A[i:i+self.config['input']['num_frame']] = (output_mpe_A.squeeze(0)).to('cpu').detach().numpy()
-            a_output_velocity_A[i:i+self.config['input']['num_frame']] = (output_velocity_A.squeeze(0).argmax(2)).to('cpu').detach().numpy()
+            a_output_onset_A[i : i + num_frame] = output_onset_A.squeeze(0).cpu().detach().numpy()
+            a_output_offset_A[i : i + num_frame] = output_offset_A.squeeze(0).cpu().detach().numpy()
+            a_output_mpe_A[i : i + num_frame] = output_mpe_A.squeeze(0).cpu().detach().numpy()
+            a_output_velocity_A[i : i + num_frame] = output_velocity_A.squeeze(0).argmax(2).cpu().detach().numpy()
 
-            if mode == 'combination':
-                a_output_onset_B[i:i+self.config['input']['num_frame']] = (output_onset_B.squeeze(0)).to('cpu').detach().numpy()
-                a_output_offset_B[i:i+self.config['input']['num_frame']] = (output_offset_B.squeeze(0)).to('cpu').detach().numpy()
-                a_output_mpe_B[i:i+self.config['input']['num_frame']] = (output_mpe_B.squeeze(0)).to('cpu').detach().numpy()
-                a_output_velocity_B[i:i+self.config['input']['num_frame']] = (output_velocity_B.squeeze(0).argmax(2)).to('cpu').detach().numpy()
+            if mode == "combination":
+                a_output_onset_B[i : i + num_frame] = output_onset_B.squeeze(0).cpu().detach().numpy()
+                a_output_offset_B[i : i + num_frame] = output_offset_B.squeeze(0).cpu().detach().numpy()
+                a_output_mpe_B[i : i + num_frame] = output_mpe_B.squeeze(0).cpu().detach().numpy()
+                a_output_velocity_B[i : i + num_frame] = output_velocity_B.squeeze(0).argmax(2).cpu().detach().numpy()
 
-        if mode == 'combination':
+        if mode == "combination":
             return a_output_onset_A, a_output_offset_A, a_output_mpe_A, a_output_velocity_A, a_output_onset_B, a_output_offset_B, a_output_mpe_B, a_output_velocity_B
         else:
             return a_output_onset_A, a_output_offset_A, a_output_mpe_A, a_output_velocity_A
 
 
-    def _mpe2note(self, a_onset=None, a_offset=None, a_mpe=None, a_velocity=None, thred_onset=0.5, thred_offset=0.5, thred_mpe=0.5, mode_velocity='ignore_zero', mode_offset='shorter'):
-        ## mode_velocity
-        ##  org: 0-127
-        ##  ignore_zero: 0-127 (output note does not include 0) (default)
-
-        ## mode_offset
-        ##  shorter: use shorter one of mpe and offset (default)
-        ##  longer : use longer one of mpe and offset
-        ##  offset : use offset (ignore mpe)
+    def _mpe2note(self, a_onset=None, a_offset=None, a_mpe=None, a_velocity=None, thred_onset=0.5, thred_offset=0.5, thred_mpe=0.5, mode_velocity="ignore_zero", mode_offset="shorter"):
+        # mode_velocity: 'org' (0-127) or 'ignore_zero' (exclude velocity 0)
+        # mode_offset: 'shorter', 'longer', or 'offset'
 
         a_note = []
-        hop_sec = float(self.config['feature']['hop_sample'] / self.config['feature']['sr'])
+        hop_sec = float(self.config.feature.hop_sample / self.config.feature.sr)
+        num_note = self.config.midi.num_note
+        note_min = self.config.midi.note_min
 
-        for j in range(self.config['midi']['num_note']):
+        for j in range(num_note):
             # find local maximum
             a_onset_detect = []
             for i in range(len(a_onset)):
@@ -372,7 +377,7 @@ class AMTAPC_Extractor:
                         time_mpe = loc_mpe * hop_sec
                         break
                 '''
-                pitch_value = int(j+self.config['midi']['note_min'])
+                pitch_value = int(j + note_min)
                 velocity_value = int(a_velocity[loc_onset][j])
 
                 if (flag_offset is False) and (flag_mpe is False):

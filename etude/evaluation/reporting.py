@@ -1,9 +1,10 @@
 # etude/evaluation/reporting.py
 
 import pandas as pd
-from typing import Dict
 
+from ..config.schema import EvalConfig
 from ..utils.logger import logger
+
 
 class ReportGenerator:
     """
@@ -12,23 +13,23 @@ class ReportGenerator:
     This class handles statistical analysis (grouping, describing) and plotting
     (boxplots) of the metric scores produced by the EvaluationRunner.
     """
-    def __init__(self, results_df: pd.DataFrame, config: Dict):
+    def __init__(self, results_df: pd.DataFrame, config: EvalConfig):
         """
         Initializes the ReportGenerator.
 
         Args:
             results_df (pd.DataFrame): The DataFrame containing raw metric scores.
-            config (Dict): The evaluation configuration dictionary, used for version
+            config (EvalConfig): The evaluation configuration, used for version
                            display names and output paths.
         """
         if results_df.empty:
             raise ValueError("Input DataFrame cannot be empty.")
-            
+
         self.df = results_df
         self.config = config
-        
+
         # Map version keys to their display names for prettier reports
-        display_names = self.config.get('versions', {})
+        display_names = config.versions
         self.df['display_name'] = self.df['version'].map(display_names).fillna(self.df['version'])
         
         # Identify which metrics were successfully calculated and are present in the DataFrame

@@ -19,6 +19,7 @@ import torch.nn as nn
 from madmom.features.beats import DBNBeatTrackingProcessor
 from madmom.features.downbeats import DBNDownBeatTrackingProcessor
 
+from ..config.schema import BeatDetectorConfig
 from ..models.beat_transformer import Demixed_DilatedTransformerModel
 from ..utils.logger import logger
 
@@ -29,16 +30,21 @@ class BeatDetector:
     It encapsulates model loading, inference, and post-processing with madmom.
     """
 
-    def __init__(self, config: Dict, model_path: str, device: str = 'auto'):
+    def __init__(
+        self,
+        config: BeatDetectorConfig,
+        model_path: Union[str, Path],
+        device: str = "auto",
+    ):
         """
         Initializes the BeatDetector.
 
         Args:
-            config (dict): A dictionary containing beat detection parameters.
-            model_path (str): Path to the pre-trained model checkpoint.
-            device (str): The device to run on ('cuda', 'mps', 'cpu', or 'auto').
+            config: BeatDetectorConfig containing beat detection parameters.
+            model_path: Path to the pre-trained model checkpoint.
+            device: The device to run on ('cuda', 'mps', 'cpu', or 'auto').
         """
-        if device == 'auto':
+        if device == "auto":
             if torch.cuda.is_available():
                 self.device = torch.device("cuda")
             elif torch.backends.mps.is_available():
@@ -53,39 +59,39 @@ class BeatDetector:
 
         # The feature rate (FPS) is derived from the original audio's sample rate
         # and the STFT hop length used to create the spectrogram.
-        fps = 44100 / self.config['fps_divisor']
+        fps = 44100 / self.config.fps_divisor
 
         self.beat_tracker = DBNBeatTrackingProcessor(
-            min_bpm=self.config['min_bpm'],
-            max_bpm=self.config['max_bpm'],
+            min_bpm=self.config.min_bpm,
+            max_bpm=self.config.max_bpm,
             fps=fps,
-            threshold=self.config['threshold']
+            threshold=self.config.threshold,
         )
         self.downbeat_tracker = DBNDownBeatTrackingProcessor(
-            beats_per_bar=self.config['beats_per_bar'],
-            min_bpm=self.config['min_bpm'],
-            max_bpm=self.config['max_bpm'],
+            beats_per_bar=self.config.beats_per_bar,
+            min_bpm=self.config.min_bpm,
+            max_bpm=self.config.max_bpm,
             fps=fps,
-            threshold=self.config['threshold']
+            threshold=self.config.threshold,
         )
         logger.debug(f"BeatDetector initialized on device: {self.device}")
 
-    def _load_model(self, model_path: str) -> nn.Module:
+    def _load_model(self, model_path: Union[str, Path]) -> nn.Module:
         """Loads the pre-trained beat detection model."""
-        model_params = self.config['model']
+        model_cfg = self.config.model
         model = Demixed_DilatedTransformerModel(
-            attn_len=model_params['attn_len'],
-            instr=model_params['instr'],
-            ntoken=model_params['ntoken'],
-            dmodel=model_params['dmodel'],
-            nhead=model_params['nhead'],
-            d_hid=model_params['d_hid'],
-            nlayers=model_params['nlayers'],
-            norm_first=model_params['norm_first']
+            attn_len=model_cfg.attn_len,
+            instr=model_cfg.instr,
+            ntoken=model_cfg.ntoken,
+            dmodel=model_cfg.dmodel,
+            nhead=model_cfg.nhead,
+            d_hid=model_cfg.d_hid,
+            nlayers=model_cfg.nlayers,
+            norm_first=model_cfg.norm_first,
         )
         checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
         # The state_dict might be nested inside the checkpoint file
-        model.load_state_dict(checkpoint.get('state_dict', checkpoint))
+        model.load_state_dict(checkpoint.get("state_dict", checkpoint))
         model.to(self.device)
         model.eval()
         return model

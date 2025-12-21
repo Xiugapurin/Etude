@@ -1,0 +1,39 @@
+# Etude Configuration
+# ===================
+#
+# This file contains overrides to the default configuration.
+# Only specify values that differ from defaults defined in etude/config/schema.py
+#
+# Usage:
+#   python infer.py --config configs/default.yaml
+#   python train.py --config configs/default.yaml
+#
+# To see all available options with their defaults, run:
+#   python -c "from etude.config import EtudeConfig; print(EtudeConfig().model_dump())"
+
+# --- Environment ---
+env:
+  # Device selection: "auto", "cuda", "mps", or "cpu"
+  # "auto" will select the best available device
+  device: "auto"
+
+  # Audio separation backend for beat detection
+  # - "spleeter": Higher quality, requires separate conda environment
+  # - "demucs": Runs in main environment (macOS compatible)
+  separation_backend: "demucs"
+
+  # Conda environment name for Spleeter (only used when separation_backend is "spleeter")
+  spleeter_env_name: "py38_spleeter"
+
+# --- Paths ---
+# Uncomment and modify if your paths differ from defaults
+# paths:
+#   decoder_model: "outputs/train/my_run/latest.pth"
+#   decoder_config: "outputs/train/my_run/etude_decoder_config.json"
+#   decoder_vocab: "dataset/vocab.json"  # Use your trained vocab for custom models
+
+# --- Decoder Generation ---
+# Uncomment to customize generation parameters
+# decoder:
+#   temperature: 0.0
+#   top_p: 0.9

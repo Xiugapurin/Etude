@@ -11,16 +11,17 @@ of the original scripts found in the hFT-Transformer project.
 
 import io
 import sys
-import json
 import pickle
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 import torch
 import torchaudio
 
+from ..config.schema import HFTConfig
 from . import amt_apc
+
 
 class CustomUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
@@ -31,13 +32,19 @@ class CustomUnpickler(pickle.Unpickler):
             return getattr(sys.modules[new_module], name)
         return super().find_class(module, name)
 
+
 class HFT_Transformer:
     """
     A fully integrated transcriber based on the hFT-Transformer pipeline.
     """
-    def __init__(self, config: Dict, model_path: str, device: str = 'auto'):
+    def __init__(self, config: HFTConfig, model_path: Union[str, Path], device: str = 'auto'):
         if device == 'auto':
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
         else:
             self.device = device
 
@@ -69,7 +76,6 @@ class HFT_Transformer:
         self,
         input_wav_path: Union[str, Path],
         output_json_path: Union[str, Path],
-        inference_params: Dict
     ):
         """
         Performs the complete transcription of a single audio file.
@@ -77,13 +83,14 @@ class HFT_Transformer:
         Args:
             input_wav_path (Union[str, Path]): Path to the input .wav file.
             output_json_path (Union[str, Path]): Path to save the output note list as a .json file.
-            inference_params (Dict): A dictionary with inference settings like thresholds and stride.
         """
+        import json
+
         feature = self._wav2feature(input_wav_path)
 
-        n_stride = inference_params.get('n_stride', 0)
-        mode = inference_params.get('mode', 'combination')
-        
+        n_stride = self.config.infer.n_stride
+        mode = self.config.infer.mode
+
         if n_stride > 0:
             predictions = self._transcript_stride(feature, n_stride, mode=mode)
         else:
@@ -93,15 +100,15 @@ class HFT_Transformer:
             onset, offset, mpe, velocity = predictions[4], predictions[5], predictions[6], predictions[7]
         else:
             onset, offset, mpe, velocity = predictions[0], predictions[1], predictions[2], predictions[3]
-            
+
         notes = self._mpe2note(
             a_onset=onset,
             a_offset=offset,
             a_mpe=mpe,
             a_velocity=velocity,
-            thred_onset=inference_params['thred_onset'],
-            thred_offset=inference_params['thred_offset'],
-            thred_mpe=inference_params['thred_mpe'],
+            thred_onset=self.config.infer.thred_onset,
+            thred_offset=self.config.infer.thred_offset,
+            thred_mpe=self.config.infer.thred_mpe,
         )
 
         output_path = Path(output_json_path)
@@ -114,19 +121,19 @@ class HFT_Transformer:
         """Loads an audio file and converts it into a log-Mel spectrogram."""
         wave, sr = torchaudio.load(f_wav)
         wave_mono = torch.mean(wave, dim=0)
-        tr_fsconv = torchaudio.transforms.Resample(sr, self.config["feature"]["sr"])
+        tr_fsconv = torchaudio.transforms.Resample(sr, self.config.feature.sr)
         wave_mono_16k = tr_fsconv(wave_mono)
         tr_mel = torchaudio.transforms.MelSpectrogram(
-            sample_rate=self.config["feature"]["sr"],
-            n_fft=self.config["feature"]["fft_bins"],
-            win_length=self.config["feature"]["window_length"],
-            hop_length=self.config["feature"]["hop_sample"],
-            pad_mode=self.config["feature"]["pad_mode"],
-            n_mels=self.config["feature"]["mel_bins"],
+            sample_rate=self.config.feature.sr,
+            n_fft=self.config.feature.fft_bins,
+            win_length=self.config.feature.window_length,
+            hop_length=self.config.feature.hop_sample,
+            pad_mode=self.config.feature.pad_mode,
+            n_mels=self.config.feature.mel_bins,
             norm="slaney",
         )
         mel_spec = tr_mel(wave_mono_16k)
-        a_feature = (torch.log(mel_spec + self.config["feature"]["log_offset"])).T
+        a_feature = (torch.log(mel_spec + self.config.feature.log_offset)).T
 
         return a_feature
 
@@ -135,23 +142,23 @@ class HFT_Transformer:
         a_feature = np.array(a_feature, dtype=np.float32)
 
         a_tmp_b = np.full(
-            [self.config["input"]["margin_b"], self.config["feature"]["n_bins"]],
-            self.config["input"]["min_value"],
+            [self.config.input.margin_b, self.config.feature.n_bins],
+            self.config.input.min_value,
             dtype=np.float32,
         )
         len_s = (
             int(
-                np.ceil(a_feature.shape[0] / self.config["input"]["num_frame"])
-                * self.config["input"]["num_frame"]
+                np.ceil(a_feature.shape[0] / self.config.input.num_frame)
+                * self.config.input.num_frame
             )
             - a_feature.shape[0]
         )
         a_tmp_f = np.full(
             [
-                len_s + self.config["input"]["margin_f"],
-                self.config["feature"]["n_bins"],
+                len_s + self.config.input.margin_f,
+                self.config.feature.n_bins,
             ],
-            self.config["input"]["min_value"],
+            self.config.input.min_value,
             dtype=np.float32,
         )
         a_input = torch.from_numpy(
@@ -160,48 +167,48 @@ class HFT_Transformer:
         # a_input: [margin_b+a_feature.shape[0]+len_s+margin_f, n_bins]
 
         a_output_onset_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_offset_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_mpe_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_velocity_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]), dtype=np.int8
+            (a_feature.shape[0] + len_s, self.config.midi.num_note), dtype=np.int8
         )
 
         if mode == "combination":
             a_output_onset_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_offset_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_mpe_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_velocity_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.int8,
             )
 
         self.model.eval()
-        for i in range(0, a_feature.shape[0], self.config["input"]["num_frame"]):
+        for i in range(0, a_feature.shape[0], self.config.input.num_frame):
             input_spec = (
                 (
                     a_input[
                         i : i
-                        + self.config["input"]["margin_b"]
-                        + self.config["input"]["num_frame"]
-                        + self.config["input"]["margin_f"]
+                        + self.config.input.margin_b
+                        + self.config.input.num_frame
+                        + self.config.input.margin_f
                     ]
                 )
                 .T.unsqueeze(0)
@@ -226,30 +233,30 @@ class HFT_Transformer:
                         self.model(input_spec)
                     )
 
-            a_output_onset_A[i : i + self.config["input"]["num_frame"]] = (
+            a_output_onset_A[i : i + self.config.input.num_frame] = (
                 (output_onset_A.squeeze(0)).to("cpu").detach().numpy()
             )
-            a_output_offset_A[i : i + self.config["input"]["num_frame"]] = (
+            a_output_offset_A[i : i + self.config.input.num_frame] = (
                 (output_offset_A.squeeze(0)).to("cpu").detach().numpy()
             )
-            a_output_mpe_A[i : i + self.config["input"]["num_frame"]] = (
+            a_output_mpe_A[i : i + self.config.input.num_frame] = (
                 (output_mpe_A.squeeze(0)).to("cpu").detach().numpy()
             )
-            a_output_velocity_A[i : i + self.config["input"]["num_frame"]] = (
+            a_output_velocity_A[i : i + self.config.input.num_frame] = (
                 (output_velocity_A.squeeze(0).argmax(2)).to("cpu").detach().numpy()
             )
 
             if mode == "combination":
-                a_output_onset_B[i : i + self.config["input"]["num_frame"]] = (
+                a_output_onset_B[i : i + self.config.input.num_frame] = (
                     (output_onset_B.squeeze(0)).to("cpu").detach().numpy()
                 )
-                a_output_offset_B[i : i + self.config["input"]["num_frame"]] = (
+                a_output_offset_B[i : i + self.config.input.num_frame] = (
                     (output_offset_B.squeeze(0)).to("cpu").detach().numpy()
                 )
-                a_output_mpe_B[i : i + self.config["input"]["num_frame"]] = (
+                a_output_mpe_B[i : i + self.config.input.num_frame] = (
                     (output_mpe_B.squeeze(0)).to("cpu").detach().numpy()
                 )
-                a_output_velocity_B[i : i + self.config["input"]["num_frame"]] = (
+                a_output_velocity_B[i : i + self.config.input.num_frame] = (
                     (output_velocity_B.squeeze(0).argmax(2)).to("cpu").detach().numpy()
                 )
 
@@ -277,28 +284,28 @@ class HFT_Transformer:
         # a_feature: [num_frame, n_mels]
         a_feature = np.array(a_feature, dtype=np.float32)
 
-        half_frame = int(self.config["input"]["num_frame"] / 2)
+        half_frame = int(self.config.input.num_frame / 2)
         a_tmp_b = np.full(
             [
-                self.config["input"]["margin_b"] + n_offset,
-                self.config["feature"]["n_bins"],
+                self.config.input.margin_b + n_offset,
+                self.config.feature.n_bins,
             ],
-            self.config["input"]["min_value"],
+            self.config.input.min_value,
             dtype=np.float32,
         )
         tmp_len = (
             a_feature.shape[0]
-            + self.config["input"]["margin_b"]
-            + self.config["input"]["margin_f"]
+            + self.config.input.margin_b
+            + self.config.input.margin_f
             + half_frame
         )
         len_s = int(np.ceil(tmp_len / half_frame) * half_frame) - tmp_len
         a_tmp_f = np.full(
             [
-                len_s + self.config["input"]["margin_f"] + (half_frame - n_offset),
-                self.config["feature"]["n_bins"],
+                len_s + self.config.input.margin_f + (half_frame - n_offset),
+                self.config.feature.n_bins,
             ],
-            self.config["input"]["min_value"],
+            self.config.input.min_value,
             dtype=np.float32,
         )
 
@@ -308,36 +315,36 @@ class HFT_Transformer:
         # a_input: [n_offset+margin_b+a_feature.shape[0]+len_s+(half_frame-n_offset)+margin_f, n_bins]
 
         a_output_onset_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_offset_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_mpe_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+            (a_feature.shape[0] + len_s, self.config.midi.num_note),
             dtype=np.float32,
         )
         a_output_velocity_A = np.zeros(
-            (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]), dtype=np.int8
+            (a_feature.shape[0] + len_s, self.config.midi.num_note), dtype=np.int8
         )
 
         if mode == "combination":
             a_output_onset_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_offset_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_mpe_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.float32,
             )
             a_output_velocity_B = np.zeros(
-                (a_feature.shape[0] + len_s, self.config["midi"]["num_note"]),
+                (a_feature.shape[0] + len_s, self.config.midi.num_note),
                 dtype=np.int8,
             )
 
@@ -347,9 +354,9 @@ class HFT_Transformer:
                 (
                     a_input[
                         i : i
-                        + self.config["input"]["margin_b"]
-                        + self.config["input"]["num_frame"]
-                        + self.config["input"]["margin_f"]
+                        + self.config.input.margin_b
+                        + self.config.input.num_frame
+                        + self.config.input.margin_f
                     ]
                 )
                 .T.unsqueeze(0)
@@ -466,10 +473,10 @@ class HFT_Transformer:
     ):
         a_note = []
         hop_sec = float(
-            self.config["feature"]["hop_sample"] / self.config["feature"]["sr"]
+            self.config.feature.hop_sample / self.config.feature.sr
         )
 
-        for j in range(self.config["midi"]["num_note"]):
+        for j in range(self.config.midi.num_note):
             # find local maximum
             a_onset_detect = []
             for i in range(len(a_onset)):
@@ -604,7 +611,7 @@ class HFT_Transformer:
                         time_mpe = loc_mpe * hop_sec
                         break
                 """
-                pitch_value = int(j + self.config["midi"]["note_min"])
+                pitch_value = int(j + self.config.midi.note_min)
                 velocity_value = int(a_velocity[loc_onset][j])
 
                 if (flag_offset is False) and (flag_mpe is False):
