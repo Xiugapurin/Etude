@@ -100,7 +100,9 @@ checkpoints/
 ├── beat_detector/
 │   └── latest.pt
 ├── decoder/
-│   └── latest.pth
+│   ├── latest.pth
+│   ├── etude_decoder_config.json
+│   └── vocab.json
 ├── extractor/
 │   └── latest.pth
 └── hft_transformer/
