@@ -1,155 +1,341 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Etude: Controllable Generation Demo</title>
+    <title>Etude — Interactive Style Control</title>
+
+    <script>
+      (function () {
+        if (localStorage.getItem("etude-theme") === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "Noto Sans TC", "ui-sans-serif", "system-ui"],
+              display: ["Space Grotesk", "Inter", "ui-sans-serif", "system-ui"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              brand: { 300: "#a5b4fc", 500: "#6366f1", 600: "#4f46e5", 700: "#4338ca" },
+              accent: { 500: "#14b8a6", 600: "#0d9488" },
+            },
+          },
+        },
+      };
+    </script>
+
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
 
     <style>
-      body {
-        font-family: "Inter", "Noto Sans TC", sans-serif;
+      :root { color-scheme: light dark; }
+      html, body { height: 100%; }
+      body { overflow: hidden; }
+      @media (max-width: 1023px) {
+        body { overflow: auto; }
       }
+
+      /* Custom range slider */
+      input[type="range"].etude-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        background: linear-gradient(90deg, #6366f1 0%, #14b8a6 var(--pct, 50%), #e5e7eb var(--pct, 50%), #e5e7eb 100%);
+        border-radius: 999px;
+        outline: none;
+        transition: background 0.2s;
+      }
+      .dark input[type="range"].etude-slider {
+        background: linear-gradient(90deg, #a5b4fc 0%, #2dd4bf var(--pct, 50%), #1e293b var(--pct, 50%), #1e293b 100%);
+      }
+      input[type="range"].etude-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fff;
+        border: 2px solid #4f46e5;
+        box-shadow: 0 2px 6px rgba(79, 70, 229, 0.35);
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.2s;
+      }
+      .dark input[type="range"].etude-slider::-webkit-slider-thumb {
+        background: #0b1220;
+        border-color: #a5b4fc;
+        box-shadow: 0 2px 8px rgba(165, 180, 252, 0.35);
+      }
+      input[type="range"].etude-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
+      input[type="range"].etude-slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fff;
+        border: 2px solid #4f46e5;
+        cursor: pointer;
+      }
+
+      .step-pill {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.68rem;
+        padding: 0.1rem 0.45rem;
+        border-radius: 9999px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .step-pill.active {
+        background: linear-gradient(90deg, rgba(99,102,241,0.18), rgba(20,184,166,0.18));
+        color: #4338ca;
+      }
+      .dark .step-pill.active { color: #a5b4fc; }
+
+      /* Player skin */
       #player::part(control-panel) {
-        background: #f9fafb; /* gray-50 */
-        border: 1px solid #e5e7eb; /* gray-200 */
+        background: transparent;
+        border: none;
       }
+      #player::part(play-button) { color: #4f46e5; }
+      .dark #player::part(play-button) { color: #a5b4fc; }
+      #player::part(time) { font-family: "JetBrains Mono", monospace; font-size: 0.75rem; }
       #visualizer {
-        border: 1px solid #e5e7eb; /* gray-200 */
+        border-radius: 10px;
+        border: 1px solid rgb(226 232 240);
+        background: #fff;
+        width: 100%;
+        height: 100%;
+      }
+      .dark #visualizer {
+        border-color: rgb(30 41 59);
+        background: #0b1220;
+      }
+
+      .aurora-sub {
+        background:
+          radial-gradient(50% 60% at 15% 0%, rgba(20, 184, 166, 0.12), transparent 60%),
+          radial-gradient(40% 50% at 90% 10%, rgba(99, 102, 241, 0.1), transparent 60%);
+      }
+      .dark .aurora-sub {
+        background:
+          radial-gradient(50% 60% at 15% 0%, rgba(20, 184, 166, 0.2), transparent 60%),
+          radial-gradient(40% 50% at 90% 10%, rgba(99, 102, 241, 0.15), transparent 60%);
+      }
+
+      kbd {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        background: rgb(241 245 249);
+        border: 1px solid rgb(203 213 225);
+        border-bottom-width: 2px;
+        color: rgb(71 85 105);
+      }
+      .dark kbd {
+        background: rgb(30 41 59);
+        border-color: rgb(51 65 85);
+        color: rgb(203 213 225);
+      }
+
+      /* Tab switcher */
+      .tab-btn {
+        color: rgb(100 116 139);
+      }
+      .tab-btn:hover {
+        color: rgb(51 65 85);
+      }
+      .dark .tab-btn {
+        color: rgb(148 163 184);
+      }
+      .dark .tab-btn:hover {
+        color: rgb(226 232 240);
+      }
+      .tab-btn.active {
+        background: #fff;
+        color: #4f46e5;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      }
+      .dark .tab-btn.active {
+        background: rgb(15 23 42);
+        color: #a5b4fc;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
       }
     </style>
   </head>
-  <body class="bg-gray-100 text-gray-800">
-    <header class="text-center py-8 bg-white border-b border-gray-200">
-      <div class="container mx-auto px-4 relative">
-        <a
-          href="index.html"
-          class="absolute top-1/2 -translate-y-1/2 left-4 md:left-8 inline-flex items-center text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-          </svg>
+
+  <body class="font-sans bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200 antialiased selection:bg-accent-500/25 flex flex-col">
+    <!-- Top bar -->
+    <div class="flex-none backdrop-blur bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/60 dark:border-slate-800/60 relative overflow-hidden">
+      <div class="absolute inset-0 aurora-sub pointer-events-none"></div>
+      <div class="container mx-auto px-4 h-12 flex items-center justify-between relative">
+        <a href="index.html" class="inline-flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-brand-700 dark:hover:text-brand-300 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </a>
-        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Interactive Controllable Generation</h1>
-        <p class="mt-3 text-base text-gray-600 max-w-3xl mx-auto">Adjust the sliders to change the musical attributes and listen to the result in real-time.</p>
+        <a href="index.html" class="flex items-center gap-2 font-display font-semibold tracking-tight">
+          <span class="inline-grid place-items-center w-6 h-6 rounded-md bg-gradient-to-br from-brand-500 to-accent-500 text-white text-[10px]">E</span>
+          <span class="text-slate-900 dark:text-slate-100 text-sm">Etude</span>
+          <span class="hidden sm:inline text-xs font-mono font-normal text-slate-500 dark:text-slate-400">/ style control</span>
+        </a>
+        <button id="theme-toggle" type="button" aria-label="Toggle theme" class="grid place-items-center w-8 h-8 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <svg class="w-3.5 h-3.5 block dark:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="w-3.5 h-3.5 hidden dark:block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
       </div>
-    </header>
+    </div>
 
-    <main class="container mx-auto p-4 md:p-8">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-md">
-          <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-4">Style Attributes</h2>
-          <div class="space-y-6">
-            <div>
-              <label for="polyphony" class="flex justify-between items-center text-lg font-semibold text-gray-700">
-                Polyphony
-                <span id="polyphony-value" class="text-indigo-600 font-bold text-xl">1</span>
-              </label>
-              <input
-                id="polyphony-slider"
-                type="range"
-                min="0"
-                max="2"
-                value="1"
-                step="1"
-                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div class="flex justify-between text-sm text-gray-500 mt-1">
-                <span>Sparse</span>
-                <span>Medium</span>
-                <span>Dense</span>
+    <!-- Main: 3-column grid, fills remaining height -->
+    <main class="flex-1 min-h-0">
+      <div class="container mx-auto h-full px-3 md:px-6 py-3 md:py-4">
+        <div class="h-full grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4">
+          <!-- Left: Controls -->
+          <section class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 md:p-5 flex flex-col min-h-0">
+            <div class="flex items-start justify-between mb-1">
+              <div>
+                <p class="text-[10px] uppercase font-mono tracking-wider text-accent-600 dark:text-accent-500">Demo 02</p>
+                <h1 class="mt-0.5 font-display text-lg md:text-xl font-bold text-slate-900 dark:text-white">Style Attributes</h1>
+              </div>
+              <button id="reset-btn" type="button" class="text-xs font-mono text-slate-500 hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300 transition inline-flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                reset
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Move the sliders or click the labels below each one. Playback updates immediately.
+            </p>
+
+            <div class="flex-1 min-h-0 flex flex-col justify-around gap-5">
+              <!-- Polyphony -->
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="polyphony-slider" class="text-sm font-semibold text-slate-800 dark:text-slate-200">Polyphony</label>
+                  <span id="polyphony-value" class="font-mono text-xs text-brand-700 dark:text-brand-300">1</span>
+                </div>
+                <p class="text-[11px] leading-snug text-slate-500 dark:text-slate-400 mb-2">
+                  Density of the harmonic texture — shifts between sparse arpeggios and denser chords.
+                </p>
+                <input id="polyphony-slider" type="range" min="0" max="2" value="1" step="1" class="etude-slider" />
+                <div class="mt-1.5 flex justify-between text-[10px] uppercase tracking-wide font-mono text-slate-500 dark:text-slate-400">
+                  <span data-step="0" data-slider="polyphony" class="step-pill">Sparse</span>
+                  <span data-step="1" data-slider="polyphony" class="step-pill active">Medium</span>
+                  <span data-step="2" data-slider="polyphony" class="step-pill">Dense</span>
+                </div>
+              </div>
+
+              <!-- Rhythm Intensity -->
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="rhythm-slider" class="text-sm font-semibold text-slate-800 dark:text-slate-200">Rhythm Intensity</label>
+                  <span id="rhythm-value" class="font-mono text-xs text-brand-700 dark:text-brand-300">1</span>
+                </div>
+                <p class="text-[11px] leading-snug text-slate-500 dark:text-slate-400 mb-2">
+                  Density of rhythmic events over time — higher yields a more complex, rhythmically active phrase.
+                </p>
+                <input id="rhythm-slider" type="range" min="0" max="2" value="1" step="1" class="etude-slider" />
+                <div class="mt-1.5 flex justify-between text-[10px] uppercase tracking-wide font-mono text-slate-500 dark:text-slate-400">
+                  <span data-step="0" data-slider="rhythm" class="step-pill">Simple</span>
+                  <span data-step="1" data-slider="rhythm" class="step-pill active">Medium</span>
+                  <span data-step="2" data-slider="rhythm" class="step-pill">Complex</span>
+                </div>
+              </div>
+
+              <!-- Note Sustain -->
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="sustain-slider" class="text-sm font-semibold text-slate-800 dark:text-slate-200">Note Sustain</label>
+                  <span id="sustain-value" class="font-mono text-xs text-brand-700 dark:text-brand-300">1</span>
+                </div>
+                <p class="text-[11px] leading-snug text-slate-500 dark:text-slate-400 mb-2">
+                  Average note duration — controls articulation from staccato (short) to legato (smooth, connected).
+                </p>
+                <input id="sustain-slider" type="range" min="0" max="2" value="1" step="1" class="etude-slider" />
+                <div class="mt-1.5 flex justify-between text-[10px] uppercase tracking-wide font-mono text-slate-500 dark:text-slate-400">
+                  <span data-step="0" data-slider="sustain" class="step-pill">Staccato</span>
+                  <span data-step="1" data-slider="sustain" class="step-pill active">Medium</span>
+                  <span data-step="2" data-slider="sustain" class="step-pill">Legato</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Right: Player + piano roll / origin video (tabbed) -->
+          <section class="lg:col-span-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 md:p-5 flex flex-col min-h-0">
+            <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+              <div class="flex items-center gap-2">
+                <span class="flex items-center gap-1">
+                  <span class="inline-block w-1 h-3 rounded-sm bg-brand-500 animate-pulse"></span>
+                  <span class="inline-block w-1 h-4 rounded-sm bg-brand-400 animate-pulse [animation-delay:120ms]"></span>
+                  <span class="inline-block w-1 h-2.5 rounded-sm bg-accent-500 animate-pulse [animation-delay:240ms]"></span>
+                </span>
+                <div>
+                  <p class="text-[10px] uppercase font-mono tracking-wider text-accent-600 dark:text-accent-500">Live Demo</p>
+                  <h2 id="now-playing-title" class="text-sm md:text-base font-semibold text-slate-900 dark:text-slate-100 truncate">Controllable Performance</h2>
+                </div>
+              </div>
+
+              <!-- Tab switcher -->
+              <div role="tablist" aria-label="View switcher" class="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-800/60 p-0.5 text-xs font-medium">
+                <button id="tab-piano" role="tab" aria-selected="true" data-tab="piano" type="button" class="tab-btn active px-3 py-1 rounded-md transition">Piano Roll</button>
+                <button id="tab-origin" role="tab" aria-selected="false" data-tab="origin" type="button" class="tab-btn px-3 py-1 rounded-md transition">Origin Video</button>
               </div>
             </div>
 
-            <div>
-              <label for="rhythm" class="flex justify-between items-center text-lg font-semibold text-gray-700">
-                Rhythm Intensity
-                <span id="rhythm-value" class="text-indigo-600 font-bold text-xl">1</span>
-              </label>
-              <input
-                id="rhythm-slider"
-                type="range"
-                min="0"
-                max="2"
-                value="1"
-                step="1"
-                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div class="flex justify-between text-sm text-gray-500 mt-1">
-                <span>Simple</span>
-                <span>Medium</span>
-                <span>Complex</span>
+            <div class="flex-1 min-h-0 rounded-lg overflow-hidden relative">
+              <!-- Piano roll panel -->
+              <div id="panel-piano" role="tabpanel" aria-labelledby="tab-piano" class="absolute inset-0">
+                <midi-visualizer type="piano-roll" id="visualizer"></midi-visualizer>
+              </div>
+
+              <!-- Origin video panel -->
+              <div id="panel-origin" role="tabpanel" aria-labelledby="tab-origin" class="absolute inset-0 hidden bg-black">
+                <iframe
+                  id="origin-iframe"
+                  class="w-full h-full"
+                  data-src="https://www.youtube.com/embed/RCaTLn4qoz4"
+                  title="YouTube video player — Mrs. GREEN APPLE — クスシキ"
+                  frameborder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowfullscreen
+                ></iframe>
               </div>
             </div>
 
-            <div>
-              <label for="sustain" class="flex justify-between items-center text-lg font-semibold text-gray-700">
-                Note Sustain
-                <span id="sustain-value" class="text-indigo-600 font-bold text-xl">1</span>
-              </label>
-              <input
-                id="sustain-slider"
-                type="range"
-                min="0"
-                max="2"
-                value="1"
-                step="1"
-                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div class="flex justify-between text-sm text-gray-500 mt-1">
-                <span>Staccato</span>
-                <span>Medium</span>
-                <span>Legato</span>
-              </div>
+            <div id="player-wrap" class="mt-3 flex-none">
+              <midi-player id="player" sound-font class="w-full"></midi-player>
             </div>
-          </div>
-        </div>
 
-        <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
-          <h2 id="now-playing-title" class="text-2xl font-bold mb-4 text-gray-800">Live Demo</h2>
-          <midi-player id="player" sound-font class="w-full"></midi-player>
-          <midi-visualizer type="piano-roll" id="visualizer" class="mt-4 rounded-lg"></midi-visualizer>
-        </div>
-
-        <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
-          <h2 class="text-2xl font-bold mb-4 text-gray-800">Origin Song: Mrs. GREEN APPLE - クスシキ</h2>
-          <div class="w-full aspect-video">
-            <iframe
-              class="w-full h-full rounded-lg"
-              src="https://www.youtube.com/embed/RCaTLn4qoz4"
-              title="YouTube video player for Etude Project"
-              frameborder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen
-            >
-            </iframe>
-          </div>
+            <p id="origin-caption" class="mt-2 text-[11px] text-slate-400 dark:text-slate-500 hidden text-center">
+              Origin: Mrs. GREEN APPLE — クスシキ
+            </p>
+          </section>
         </div>
       </div>
     </main>
 
-    <footer class="text-center py-4">
-      <div class="container mx-auto px-4">
-        <p class="text-xs text-gray-500">
-          MIDI Player & Visualizer powered by
-          <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-gray-700">
-            html-midi-player
-          </a>
-          by Ondřej Cífka.
-        </p>
+    <!-- Keyboard hint footer -->
+    <div class="flex-none hidden lg:block border-t border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-950/70 backdrop-blur">
+      <div class="container mx-auto px-4 py-1.5 flex items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+        <span><kbd>Space</kbd> play/pause</span>
+        <span><kbd>R</kbd> reset</span>
+        <span class="hidden xl:inline">MIDI playback via <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-700 dark:hover:text-slate-300">html-midi-player</a></span>
       </div>
-    </footer>
+    </div>
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        // --- DOM ELEMENT REFERENCES ---
         const dom = {
           polyphonySlider: document.getElementById("polyphony-slider"),
           rhythmSlider: document.getElementById("rhythm-slider"),
@@ -159,52 +345,130 @@
           sustainValue: document.getElementById("sustain-value"),
           player: document.getElementById("player"),
           visualizer: document.getElementById("visualizer"),
-          nowPlayingTitle: document.getElementById("now-playing-title"),
+          resetBtn: document.getElementById("reset-btn"),
+          themeToggle: document.getElementById("theme-toggle"),
+          tabBtns: document.querySelectorAll(".tab-btn"),
+          panelPiano: document.getElementById("panel-piano"),
+          panelOrigin: document.getElementById("panel-origin"),
+          originIframe: document.getElementById("origin-iframe"),
+          originCaption: document.getElementById("origin-caption"),
+          playerWrap: document.getElementById("player-wrap"),
         };
 
-        // Link player to visualizer
+        dom.themeToggle.addEventListener("click", () => {
+          const root = document.documentElement;
+          root.classList.toggle("dark");
+          localStorage.setItem("etude-theme", root.classList.contains("dark") ? "dark" : "light");
+        });
+
         dom.player.addVisualizer(dom.visualizer);
 
-        // --- CORE LOGIC ---
-        function updateMidiPlayer() {
-          // 1. Get current values from sliders
+        const sliders = [
+          { el: dom.polyphonySlider, key: "polyphony", valEl: dom.polyphonyValue },
+          { el: dom.rhythmSlider, key: "rhythm", valEl: dom.rhythmValue },
+          { el: dom.sustainSlider, key: "sustain", valEl: dom.sustainValue },
+        ];
+
+        function setSliderFill(input) {
+          const min = Number(input.min);
+          const max = Number(input.max);
+          const pct = ((Number(input.value) - min) / (max - min)) * 100;
+          input.style.setProperty("--pct", pct + "%");
+        }
+
+        function setActiveStep(sliderKey, step) {
+          document.querySelectorAll(`[data-slider="${sliderKey}"]`).forEach((el) => {
+            el.classList.toggle("active", Number(el.dataset.step) === Number(step));
+          });
+        }
+
+        function update() {
           const polyphony = dom.polyphonySlider.value;
           const rhythm = dom.rhythmSlider.value;
           const sustain = dom.sustainSlider.value;
 
-          // 2. Update the text labels next to the sliders
           dom.polyphonyValue.textContent = polyphony;
           dom.rhythmValue.textContent = rhythm;
           dom.sustainValue.textContent = sustain;
 
-          // 3. Construct the filename based on the slider values
+          sliders.forEach((s) => {
+            setSliderFill(s.el);
+            setActiveStep(s.key, s.el.value);
+          });
+
           const filename = `${polyphony}${rhythm}${sustain}.mid`;
           const filePath = `./songs/style_demo/${filename}`;
-
-          // 4. Update the player source and title
-          // We check if the source has actually changed to avoid unnecessary reloads
           if (dom.player.src !== new URL(filePath, window.location.href).href) {
-            dom.player.stop(); // Stop current playback
+            dom.player.stop();
             dom.player.src = filePath;
-            dom.nowPlayingTitle.textContent = `Live Demo`;
           }
         }
 
-        // --- EVENT LISTENERS ---
-        // Add a single event listener to the container for efficiency
-        const controlsContainer = document.querySelector(".lg\\:col-span-1");
-        controlsContainer.addEventListener("input", (event) => {
-          if (event.target.type === "range") {
-            if (Tone.context.state !== "running") {
-              Tone.start();
+        sliders.forEach((s) => {
+          s.el.addEventListener("input", () => {
+            if (Tone.context.state !== "running") Tone.start();
+            update();
+          });
+        });
+
+        document.querySelectorAll(".step-pill").forEach((pill) => {
+          pill.addEventListener("click", () => {
+            const key = pill.dataset.slider;
+            const step = pill.dataset.step;
+            const target = sliders.find((s) => s.key === key);
+            if (!target) return;
+            target.el.value = step;
+            if (Tone.context.state !== "running") Tone.start();
+            update();
+          });
+        });
+
+        dom.resetBtn.addEventListener("click", () => {
+          sliders.forEach((s) => (s.el.value = 1));
+          update();
+        });
+
+        // Tab switching: Piano Roll / Origin Video
+        function setTab(name) {
+          const isPiano = name === "piano";
+          dom.tabBtns.forEach((b) => {
+            const active = b.dataset.tab === name;
+            b.classList.toggle("active", active);
+            b.setAttribute("aria-selected", active ? "true" : "false");
+          });
+          dom.panelPiano.classList.toggle("hidden", !isPiano);
+          dom.panelOrigin.classList.toggle("hidden", isPiano);
+          dom.originCaption.classList.toggle("hidden", isPiano);
+          dom.playerWrap.classList.toggle("hidden", !isPiano);
+
+          if (!isPiano) {
+            if (dom.player.playing) dom.player.stop();
+            if (!dom.originIframe.getAttribute("src")) {
+              dom.originIframe.setAttribute("src", dom.originIframe.dataset.src);
             }
-            updateMidiPlayer();
+          } else {
+            dom.originIframe.removeAttribute("src");
+          }
+        }
+        dom.tabBtns.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+        // Keyboard
+        document.addEventListener("keydown", (e) => {
+          const tag = (e.target.tagName || "").toLowerCase();
+          if (["input", "textarea", "select"].includes(tag)) return;
+          if (e.key === " " || e.code === "Space") {
+            e.preventDefault();
+            if (!dom.player.src) return;
+            if (dom.player.playing) dom.player.stop();
+            else dom.player.start();
+          } else if (e.key === "r" || e.key === "R") {
+            e.preventDefault();
+            sliders.forEach((s) => (s.el.value = 1));
+            update();
           }
         });
 
-        // --- INITIALIZATION ---
-        // Load the default MIDI file (111.mid) when the page loads
-        updateMidiPlayer();
+        update();
       });
     </script>
   </body>

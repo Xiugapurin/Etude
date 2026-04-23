@@ -1,120 +1,359 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Etude: A Music Transcription and Generation Model Showcase</title>
+    <title>Etude — Model Comparison</title>
+
+    <script>
+      (function () {
+        if (localStorage.getItem("etude-theme") === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "Noto Sans TC", "ui-sans-serif", "system-ui"],
+              display: ["Space Grotesk", "Inter", "ui-sans-serif", "system-ui"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              brand: { 300: "#a5b4fc", 500: "#6366f1", 600: "#4f46e5", 700: "#4338ca" },
+              accent: { 500: "#14b8a6", 600: "#0d9488" },
+            },
+          },
+        },
+      };
+    </script>
+
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
 
     <style>
-      body {
-        font-family: "Inter", "Noto Sans TC", sans-serif;
+      :root { color-scheme: light dark; }
+      html, body { height: 100%; }
+      body { overflow: hidden; } /* desktop: no scroll */
+      @media (max-width: 1023px) {
+        body { overflow: auto; } /* mobile fallback */
       }
-      #bottom-player {
-        transition: transform 0.3s ease-in-out;
+
+      .nav-link { position: relative; transition: color 0.2s; }
+      .nav-link::after {
+        content: "";
+        position: absolute;
+        left: 12%; right: 12%; bottom: -1px;
+        height: 2px;
+        background: linear-gradient(90deg, #6366f1, #14b8a6);
+        border-radius: 2px;
+        transform: scaleX(0);
+        transform-origin: center;
+        transition: transform 0.25s ease;
       }
-      .nav-link {
-        transition: color 0.2s, border-color 0.2s;
-      }
-      .nav-link.active {
-        color: #4f46e5; /* indigo-600 */
-        border-bottom-color: #4f46e5;
-      }
+      .nav-link.active { color: #4f46e5; }
+      .dark .nav-link.active { color: #a5b4fc; }
+      .nav-link.active::after { transform: scaleX(1); }
+
+      /* Player skin */
       #player::part(control-panel) {
-        background: #f3f4f6;
-        border: 1px solid #e5e7eb;
+        background: transparent;
+        border: none;
         border-radius: 12px;
+        padding: 2px 4px;
       }
-      #player::part(play-button) {
-        color: #4f46e5;
-      }
+      #player::part(play-button) { color: #4f46e5; }
+      .dark #player::part(play-button) { color: #a5b4fc; }
+      #player::part(time) { font-family: "JetBrains Mono", monospace; font-size: 0.75rem; }
       #visualizer {
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        border: 1px solid rgb(226 232 240);
+        background: #fff;
+        width: 100%;
+        height: 100%;
       }
-      /* Hide inactive category content */
-      .category-content:not(.active) {
-        display: none;
+      .dark #visualizer {
+        border-color: rgb(30 41 59);
+        background: #0b1220;
+      }
+
+      /* Track button */
+      .track-btn {
+        transition: background-color 0.15s, border-color 0.15s, transform 0.1s;
+      }
+      .track-btn:hover {
+        background-color: rgb(238 242 255);
+        border-color: rgb(165 180 252);
+      }
+      .dark .track-btn:hover {
+        background-color: rgb(30 41 59);
+        border-color: rgb(99 102 241);
+      }
+      .track-btn.playing {
+        background: linear-gradient(90deg, rgba(99,102,241,0.12), rgba(20,184,166,0.12));
+        border-color: rgb(99 102 241);
+      }
+      .dark .track-btn.playing {
+        background: linear-gradient(90deg, rgba(99,102,241,0.2), rgba(20,184,166,0.2));
+        border-color: rgb(165 180 252);
+      }
+
+      /* Chip */
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.06rem 0.45rem;
+        border-radius: 9999px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.65rem;
+        line-height: 1rem;
+      }
+      .chip-ours {
+        background: linear-gradient(90deg, rgba(99,102,241,0.12), rgba(20,184,166,0.12));
+        color: #4338ca;
+      }
+      .dark .chip-ours { color: #a5b4fc; }
+      .chip-ref {
+        background: rgb(241 245 249);
+        color: rgb(71 85 105);
+      }
+      .dark .chip-ref {
+        background: rgb(30 41 59);
+        color: rgb(148 163 184);
+      }
+      .chip-base {
+        background: rgb(248 250 252);
+        color: rgb(100 116 139);
+      }
+      .dark .chip-base {
+        background: rgb(15 23 42);
+        color: rgb(100 116 139);
+      }
+
+      /* Nav arrow */
+      .nav-arrow {
+        transition: background-color 0.2s, border-color 0.2s, transform 0.15s;
+      }
+      .nav-arrow:hover:not(:disabled) {
+        background: linear-gradient(135deg, #6366f1, #14b8a6);
+        color: white;
+        border-color: transparent;
+        transform: scale(1.05);
+      }
+      .nav-arrow:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      /* Slide transition */
+      .song-view {
+        animation: slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes slide-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: none; }
+      }
+      .song-view.leaving-left {
+        animation: slide-out-left 0.18s ease-in both;
+      }
+      .song-view.leaving-right {
+        animation: slide-out-right 0.18s ease-in both;
+      }
+      @keyframes slide-out-left {
+        to { opacity: 0; transform: translateX(-24px); }
+      }
+      @keyframes slide-out-right {
+        to { opacity: 0; transform: translateX(24px); }
+      }
+
+      /* Progress bar for song index */
+      .song-progress {
+        height: 3px;
+        background: rgb(226 232 240);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .dark .song-progress {
+        background: rgb(30 41 59);
+      }
+      .song-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #6366f1, #14b8a6);
+        transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      /* Keyboard hint */
+      kbd {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        background: rgb(241 245 249);
+        border: 1px solid rgb(203 213 225);
+        border-bottom-width: 2px;
+        color: rgb(71 85 105);
+      }
+      .dark kbd {
+        background: rgb(30 41 59);
+        border-color: rgb(51 65 85);
+        color: rgb(203 213 225);
+      }
+
+      .aurora-sub {
+        background:
+          radial-gradient(50% 60% at 15% 0%, rgba(99, 102, 241, 0.12), transparent 60%),
+          radial-gradient(40% 50% at 90% 10%, rgba(20, 184, 166, 0.1), transparent 60%);
+      }
+      .dark .aurora-sub {
+        background:
+          radial-gradient(50% 60% at 15% 0%, rgba(99, 102, 241, 0.2), transparent 60%),
+          radial-gradient(40% 50% at 90% 10%, rgba(20, 184, 166, 0.15), transparent 60%);
       }
     </style>
   </head>
-  <body class="bg-gray-100 text-gray-800">
-    <!-- Header Section -->
-    <header class="text-center py-8 md:py-12 bg-white border-b border-gray-200">
-      <div class="container mx-auto px-4 relative">
-        <a
-          href="index.html"
-          class="absolute top-4 left-4 md:top-1/2 md:-translate-y-1/2 md:left-8 inline-flex items-center text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-          </svg>
+
+  <body class="font-sans bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200 antialiased selection:bg-brand-600/25 flex flex-col">
+    <!-- Top bar -->
+    <div class="flex-none backdrop-blur bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div class="container mx-auto px-4 h-12 flex items-center justify-between">
+        <a href="index.html" class="inline-flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-brand-700 dark:hover:text-brand-300 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </a>
-        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Model Comparison Showcase</h1>
-        <p class="mt-3 text-base md:text-md text-gray-600 max-w-3xl mx-auto">
-          Listen to and compare the outputs of our Etude model against other systems. Click any play button to start.
-        </p>
+        <a href="index.html" class="flex items-center gap-2 font-display font-semibold tracking-tight">
+          <span class="inline-grid place-items-center w-6 h-6 rounded-md bg-gradient-to-br from-brand-500 to-accent-500 text-white text-[10px]">E</span>
+          <span class="text-slate-900 dark:text-slate-100 text-sm">Etude</span>
+          <span class="hidden sm:inline text-xs font-mono font-normal text-slate-500 dark:text-slate-400">/ model comparison</span>
+        </a>
+        <button id="theme-toggle" type="button" aria-label="Toggle theme" class="grid place-items-center w-8 h-8 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <svg class="w-3.5 h-3.5 block dark:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="w-3.5 h-3.5 hidden dark:block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
       </div>
-    </header>
+    </div>
 
-    <!-- Sticky Navigation Tabs -->
-    <nav id="category-nav" class="sticky top-0 z-20 bg-white/90 backdrop-blur-sm shadow-sm">
-      <div class="container mx-auto flex justify-center space-x-4 md:space-x-8 border-b border-gray-200">
-        <!-- Nav links will be generated by JavaScript -->
+    <!-- Category tabs -->
+    <nav id="category-nav" class="flex-none bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/60 dark:border-slate-800/60 relative overflow-hidden">
+      <div class="absolute inset-0 aurora-sub pointer-events-none"></div>
+      <div class="container mx-auto flex justify-center gap-1 md:gap-3 px-4 relative">
+        <!-- Injected -->
       </div>
     </nav>
 
-    <!-- Main Content: Song List -->
-    <main id="song-list-container" class="container mx-auto p-4 md:p-8">
-      <div id="loading-indicator" class="text-center py-20">
-        <p class="text-gray-500 text-lg">Loading demo songs...</p>
+    <!-- Main player -->
+    <main class="flex-1 min-h-0 overflow-hidden">
+      <div id="loading-indicator" class="h-full grid place-items-center">
+        <div class="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
+          <svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"></path></svg>
+          <span>Loading demo songs…</span>
+        </div>
       </div>
-      <!-- Category content will be injected here -->
-    </main>
 
-    <!-- Sticky Bottom Player (Initially Hidden) -->
-    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl p-4 z-30 transform translate-y-full">
-      <div class="container mx-auto">
-        <div class="flex items-center mb-3">
-          <h3 id="now-playing-title" class="text-lg font-semibold text-gray-800 flex-grow truncate">playing...</h3>
-          <button id="close-player-btn" class="text-gray-500 hover:text-gray-800 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+      <div id="player-shell" class="hidden h-full container mx-auto px-3 md:px-6 py-3 md:py-4">
+        <!-- Song header: title + navigation + progress -->
+        <div class="flex items-center gap-3 md:gap-4 mb-3">
+          <button id="prev-btn" type="button" aria-label="Previous song" class="nav-arrow flex-none grid place-items-center w-10 h-10 md:w-11 md:h-11 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+
+          <div class="flex-1 min-w-0">
+            <div id="song-view" class="song-view">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span id="song-category-badge" class="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-600/10 text-brand-700 dark:text-brand-300">J-POP</span>
+                <span id="song-index" class="text-xs font-mono text-slate-500 dark:text-slate-400">01 / 25</span>
+              </div>
+              <h1 id="song-title" class="mt-0.5 font-display text-lg md:text-2xl font-bold text-slate-900 dark:text-white truncate">—</h1>
+            </div>
+            <div class="mt-2 song-progress">
+              <div id="song-progress-fill" class="song-progress-fill" style="width: 4%;"></div>
+            </div>
+          </div>
+
+          <button id="next-btn" type="button" aria-label="Next song" class="nav-arrow flex-none grid place-items-center w-10 h-10 md:w-11 md:h-11 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-          <div class="md:col-span-1">
-            <midi-player id="player" sound-font></midi-player>
-          </div>
-          <div class="md:col-span-2">
-            <midi-visualizer type="piano-roll" id="visualizer"></midi-visualizer>
-          </div>
-        </div>
+        <!-- Content grid: left tracks | right player -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4 flex-1 min-h-0" style="height: calc(100% - 72px);">
+          <!-- Left: Tracks -->
+          <section class="lg:col-span-2 flex flex-col gap-3 min-h-0">
+            <div class="flex-1 min-h-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 md:p-4 flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <h2 class="font-display text-sm font-semibold text-slate-700 dark:text-slate-300">Tracks</h2>
+                <span class="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                  <kbd>1</kbd>–<kbd>7</kbd> to play
+                </span>
+              </div>
+              <div id="track-list" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
+                <!-- Injected -->
+              </div>
+            </div>
 
-        <div class="text-center mt-2">
-          <p class="text-xs text-gray-400">
-            MIDI Player powered by
-            <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-gray-600">
-              html-midi-player
-            </a>
-            by Ondřej Cífka.
-          </p>
+            <!-- YouTube embed -->
+            <div class="flex-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div id="yt-container" class="w-full aspect-video bg-black">
+                <!-- Injected -->
+              </div>
+            </div>
+          </section>
+
+          <!-- Right: Piano roll + player controls -->
+          <section class="lg:col-span-3 flex flex-col min-h-0">
+            <div class="flex-1 min-h-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 md:p-4 flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="flex items-center gap-1">
+                    <span class="inline-block w-1 h-3 rounded-sm bg-brand-500 animate-pulse"></span>
+                    <span class="inline-block w-1 h-4 rounded-sm bg-brand-400 animate-pulse [animation-delay:120ms]"></span>
+                    <span class="inline-block w-1 h-2.5 rounded-sm bg-accent-500 animate-pulse [animation-delay:240ms]"></span>
+                  </span>
+                  <div>
+                    <p class="text-[10px] uppercase font-mono tracking-wider text-slate-500 dark:text-slate-400">Now playing</p>
+                    <h3 id="now-playing-title" class="text-xs md:text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[18rem] md:max-w-[28rem]">Select a track</h3>
+                  </div>
+                </div>
+                <span class="hidden sm:inline text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                  <kbd>Space</kbd> play/pause
+                </span>
+              </div>
+
+              <div class="flex-1 min-h-0 rounded-lg overflow-hidden">
+                <midi-visualizer type="piano-roll" id="visualizer"></midi-visualizer>
+              </div>
+
+              <div class="mt-3 flex-none">
+                <midi-player id="player" sound-font></midi-player>
+              </div>
+            </div>
+          </section>
         </div>
+      </div>
+    </main>
+
+    <!-- Keyboard hint footer -->
+    <div class="flex-none hidden lg:block border-t border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-950/70 backdrop-blur">
+      <div class="container mx-auto px-4 py-1.5 flex items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+        <span><kbd>←</kbd> <kbd>→</kbd> song</span>
+        <span><kbd>[</kbd> <kbd>]</kbd> category</span>
+        <span><kbd>Space</kbd> play/pause</span>
+        <span><kbd>1</kbd>–<kbd>7</kbd> track</span>
+        <span class="hidden xl:inline">MIDI playback via <a href="https://github.com/cifkao/html-midi-player" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-700 dark:hover:text-slate-300">html-midi-player</a></span>
       </div>
     </div>
 
     <script>
       document.addEventListener("DOMContentLoaded", async function () {
-        // --- CONFIGURATION ---
         const config = {
           songCategories: {
             JPOP: { name: "J-POP", count: 25 },
@@ -123,219 +362,322 @@
             WESTERN: { name: "Western Pop", count: 25 },
           },
           midiFiles: [
-            { id: "human", name: "Human Performance", file: "human.mid" },
-            { id: "etude_d", name: "Etude Decoder (Ours)", file: "etude_d.mid" },
-            { id: "etude_d_d", name: "Etude Decoder - Default Style (Ours)", file: "etude_d_d.mid" },
-            { id: "etude_e", name: "Etude Extractor (Ours)", file: "etude_e.mid" },
-            { id: "music2midi", name: "Music2Midi", file: "music2midi.mid" },
-            { id: "picogen", name: "PiCoGen2", file: "picogen.mid" },
-            { id: "amtapc", name: "AMT-APC", file: "amtapc.mid" },
+            { id: "human", name: "Human Performance", file: "human.mid", tag: "ref" },
+            { id: "etude_d", name: "Etude Decoder", file: "etude_d.mid", tag: "ours" },
+            { id: "etude_d_d", name: "Etude Decoder — Default Style", file: "etude_d_d.mid", tag: "ours" },
+            { id: "etude_e", name: "Etude Extractor", file: "etude_e.mid", tag: "ours" },
+            { id: "music2midi", name: "Music2Midi", file: "music2midi.mid", tag: "baseline" },
+            { id: "picogen", name: "PiCoGen2", file: "picogen.mid", tag: "baseline" },
+            { id: "amtapc", name: "AMT-APC", file: "amtapc.mid", tag: "baseline" },
           ],
           metadataUrl: "./songs/metadata.json",
         };
 
-        // --- DOM ELEMENT REFERENCES ---
         const dom = {
           navContainer: document.querySelector("#category-nav .container"),
-          songListContainer: document.getElementById("song-list-container"),
-          bottomPlayer: document.getElementById("bottom-player"),
+          loadingIndicator: document.getElementById("loading-indicator"),
+          playerShell: document.getElementById("player-shell"),
           player: document.getElementById("player"),
           visualizer: document.getElementById("visualizer"),
           nowPlayingTitle: document.getElementById("now-playing-title"),
-          closePlayerBtn: document.getElementById("close-player-btn"),
-          loadingIndicator: document.getElementById("loading-indicator"),
+          themeToggle: document.getElementById("theme-toggle"),
+          prevBtn: document.getElementById("prev-btn"),
+          nextBtn: document.getElementById("next-btn"),
+          songView: document.getElementById("song-view"),
+          songCategoryBadge: document.getElementById("song-category-badge"),
+          songIndex: document.getElementById("song-index"),
+          songTitle: document.getElementById("song-title"),
+          songProgressFill: document.getElementById("song-progress-fill"),
+          trackList: document.getElementById("track-list"),
+          ytContainer: document.getElementById("yt-container"),
         };
 
-        // --- HELPER FUNCTIONS ---
+        dom.themeToggle.addEventListener("click", () => {
+          const root = document.documentElement;
+          root.classList.toggle("dark");
+          localStorage.setItem("etude-theme", root.classList.contains("dark") ? "dark" : "light");
+        });
+
         const utils = {
-          pad: (num) => num.toString().padStart(2, "0"),
+          pad: (n) => n.toString().padStart(2, "0"),
           getYoutubeEmbedUrl: (url) => {
             if (!url) return "";
-            let videoId = "";
             try {
-              const urlObj = new URL(url);
-              if (urlObj.hostname === "youtu.be") videoId = urlObj.pathname.slice(1);
-              else if (urlObj.hostname.includes("youtube.com")) videoId = urlObj.searchParams.get("v");
-            } catch (e) {
-              console.error("Invalid URL for YouTube embed:", url);
+              const u = new URL(url);
+              let id = "";
+              if (u.hostname === "youtu.be") id = u.pathname.slice(1);
+              else if (u.hostname.includes("youtube.com")) id = u.searchParams.get("v");
+              return id ? `https://www.youtube.com/embed/${id}` : "";
+            } catch {
               return "";
             }
-            return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
           },
           fetchMetadata: async (url) => {
             try {
-              const response = await fetch(url);
-              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-              const data = await response.json();
-              return data.reduce((map, item) => ({ ...map, [item.dir_name]: item }), {});
-            } catch (error) {
-              dom.loadingIndicator.textContent = "[ERROR] Can't load metadata.json.";
-              dom.loadingIndicator.classList.add("text-red-500");
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(res.status);
+              const data = await res.json();
+              return data.reduce((m, it) => ({ ...m, [it.dir_name]: it }), {});
+            } catch {
+              dom.loadingIndicator.innerHTML = `<p class="text-red-500 dark:text-red-400">[ERROR] Could not load metadata.json.</p>`;
               return null;
             }
           },
+          tagClass: (tag) => (tag === "ours" ? "chip chip-ours" : tag === "ref" ? "chip chip-ref" : "chip chip-base"),
+          tagLabel: (tag) => (tag === "ours" ? "Ours" : tag === "ref" ? "Ref" : "Baseline"),
         };
 
-        // --- UI RENDERING ---
+        // ---- State ----
+        const state = {
+          categoryKeys: Object.keys(config.songCategories),
+          categoryIdx: 0,
+          songIdx: 0, // 0-indexed within category
+          metadata: null,
+          currentTrackId: null,
+        };
+
+        // ---- UI ----
         const ui = {
-          renderAll: (metadataMap) => {
-            dom.loadingIndicator.style.display = "none";
-
-            const categoryKeys = Object.keys(config.songCategories);
-            categoryKeys.forEach((key, index) => {
-              const category = config.songCategories[key];
-              ui.createNavLink(key, category.name, index === 0);
-              ui.createCategorySection(key, category, metadataMap, index === 0);
+          buildNav: () => {
+            state.categoryKeys.forEach((key, idx) => {
+              const a = document.createElement("a");
+              a.href = `#${key}`;
+              a.textContent = config.songCategories[key].name;
+              a.className = "nav-link py-2.5 px-3 md:px-4 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer";
+              if (idx === 0) a.classList.add("active");
+              a.dataset.idx = idx;
+              a.addEventListener("click", (e) => {
+                e.preventDefault();
+                app.goToCategory(idx);
+              });
+              dom.navContainer.appendChild(a);
             });
           },
-          createNavLink: (key, name, isActive) => {
-            const navLink = document.createElement("a");
-            navLink.href = `#${key}`;
-            navLink.textContent = name;
-            navLink.className =
-              "nav-link py-3 px-2 md:px-4 text-sm md:text-base font-semibold text-gray-500 hover:text-indigo-600 border-b-2 border-transparent cursor-pointer";
-            if (isActive) navLink.classList.add("active");
-            navLink.dataset.target = key;
-            dom.navContainer.appendChild(navLink);
-          },
-          createCategorySection: (key, category, metadataMap, isActive) => {
-            const section = document.createElement("div");
-            section.id = `category-${key}`;
-            section.className = "category-content space-y-8";
-            if (isActive) section.classList.add("active");
-
-            for (let i = 1; i <= category.count; i++) {
-              const songId = `${key}${utils.pad(i)}`;
-              const songMeta = metadataMap[songId];
-              if (songMeta) section.appendChild(ui.createSongCard(songId, songMeta));
-            }
-            dom.songListContainer.appendChild(section);
-          },
-          createSongCard: (songId, songMeta) => {
-            const card = document.createElement("div");
-            card.className = "bg-white p-5 rounded-xl shadow-md overflow-hidden";
-
-            const cardTitle = document.createElement("h3");
-            cardTitle.className = "text-xl font-bold mb-4 text-gray-800";
-            cardTitle.textContent = songMeta.song_name || songId;
-            card.appendChild(cardTitle);
-
-            const cardGrid = document.createElement("div");
-            // MODIFIED: Changed items-center to items-start for better alignment
-            cardGrid.className = "grid grid-cols-1 md:grid-cols-2 gap-6 items-start";
-
-            // Left side: Track list
-            // MODIFIED: Changed from <ul> to a div with grid layout
-            const trackList = document.createElement("div");
-            trackList.className = "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2";
-            config.midiFiles.forEach((midi) => {
-              const trackPath = `./songs/${songId}/${midi.file}`;
-              const trackName = `${songMeta.song_name} - ${midi.name}`;
-              trackList.appendChild(ui.createTrackListItem(midi, trackPath, trackName, songMeta));
+          updateNav: () => {
+            dom.navContainer.querySelectorAll(".nav-link").forEach((l) => {
+              l.classList.toggle("active", Number(l.dataset.idx) === state.categoryIdx);
             });
-            cardGrid.appendChild(trackList);
-
-            // Right side: YouTube embed
-            const embedContainer = document.createElement("div");
-            const embedUrl = utils.getYoutubeEmbedUrl(songMeta.song_url);
-            if (embedUrl) {
-              // MODIFIED: Replaced deprecated aspect-w-16 aspect-h-9 with modern `aspect-video`
-              embedContainer.className = "w-full aspect-video";
-              const iframe = document.createElement("iframe");
-              iframe.src = embedUrl;
-              iframe.className = "w-full h-full rounded-lg";
-              iframe.title = `YouTube video player for ${songMeta.song_name}`;
-              iframe.frameBorder = "0";
-              iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-              iframe.allowFullscreen = true;
-              iframe.loading = "lazy";
-              embedContainer.appendChild(iframe);
-            }
-            cardGrid.appendChild(embedContainer);
-
-            card.appendChild(cardGrid);
-            return card;
           },
-          createTrackListItem: (midi, trackPath, trackName, songMeta) => {
-            const itemWrapper = document.createElement("div");
-            itemWrapper.className = "flex justify-between items-center bg-gray-50 px-4 py-3 rounded-lg";
+          renderCurrentSong: (direction = null) => {
+            const catKey = state.categoryKeys[state.categoryIdx];
+            const cat = config.songCategories[catKey];
+            const songId = `${catKey}${utils.pad(state.songIdx + 1)}`;
+            const meta = state.metadata[songId];
+            if (!meta) return;
 
-            let trackLabel;
-            if (midi.id === "human" && songMeta.cover_url) {
-              trackLabel = document.createElement("a");
-              trackLabel.href = songMeta.cover_url;
-              trackLabel.target = "_blank";
-              trackLabel.rel = "noopener noreferrer";
-              trackLabel.className = "text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline";
-              trackLabel.textContent = midi.name;
+            // song-view slide-out -> in
+            if (direction) {
+              dom.songView.classList.remove("song-view");
+              dom.songView.classList.add(direction === "next" ? "leaving-left" : "leaving-right");
+              setTimeout(() => {
+                dom.songView.classList.remove("leaving-left", "leaving-right");
+                dom.songView.classList.add("song-view");
+                ui.applySongMeta(catKey, cat, songId, meta);
+              }, 160);
             } else {
-              trackLabel = document.createElement("span");
-              trackLabel.className = "text-sm font-medium text-gray-700";
-              trackLabel.textContent = midi.name;
+              ui.applySongMeta(catKey, cat, songId, meta);
             }
 
-            const playButton = document.createElement("button");
-            playButton.className =
-              "play-btn h-8 w-8 flex-shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500";
-            playButton.title = `Play ${trackName}`;
-            playButton.dataset.src = trackPath;
-            playButton.dataset.title = trackName;
-            playButton.innerHTML = `<svg class="w-4 h-4 ml-0.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>`;
+            // track list + yt embed always updated immediately (not animated)
+            ui.renderTracks(songId, meta);
+            ui.renderYouTube(meta);
 
-            const labelContainer = document.createElement("div");
-            labelContainer.className = "flex-grow truncate mr-2";
-            labelContainer.appendChild(trackLabel);
+            // progress
+            const pct = ((state.songIdx + 1) / cat.count) * 100;
+            dom.songProgressFill.style.width = pct + "%";
 
-            itemWrapper.appendChild(labelContainer);
-            itemWrapper.appendChild(playButton);
-            return itemWrapper;
+            // nav arrow state
+            const atStart = state.categoryIdx === 0 && state.songIdx === 0;
+            const atEnd =
+              state.categoryIdx === state.categoryKeys.length - 1 &&
+              state.songIdx === config.songCategories[state.categoryKeys[state.categoryKeys.length - 1]].count - 1;
+            dom.prevBtn.disabled = atStart;
+            dom.nextBtn.disabled = atEnd;
+          },
+          applySongMeta: (catKey, cat, songId, meta) => {
+            dom.songCategoryBadge.textContent = cat.name;
+            dom.songIndex.textContent = `${utils.pad(state.songIdx + 1)} / ${cat.count} · ${songId}`;
+            dom.songTitle.textContent = meta.song_name || songId;
+          },
+          renderTracks: (songId, meta) => {
+            dom.trackList.innerHTML = "";
+            config.midiFiles.forEach((m, idx) => {
+              const path = `./songs/${songId}/${m.file}`;
+              const title = `${meta.song_name} — ${m.name}`;
+
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "track-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-left";
+              btn.dataset.src = path;
+              btn.dataset.title = title;
+              btn.dataset.id = m.id;
+              btn.dataset.idx = idx;
+
+              const num = document.createElement("span");
+              num.className = "flex-none grid place-items-center w-5 h-5 rounded font-mono text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800";
+              num.textContent = idx + 1;
+
+              const chip = document.createElement("span");
+              chip.className = utils.tagClass(m.tag);
+              chip.textContent = utils.tagLabel(m.tag);
+
+              const nameWrap = document.createElement("div");
+              nameWrap.className = "flex-1 min-w-0";
+              let label;
+              if (m.id === "human" && meta.cover_url) {
+                label = document.createElement("a");
+                label.href = meta.cover_url;
+                label.target = "_blank";
+                label.rel = "noopener noreferrer";
+                label.className = "text-sm font-medium text-brand-700 dark:text-brand-300 hover:underline truncate block";
+                label.textContent = m.name;
+                label.addEventListener("click", (e) => e.stopPropagation());
+              } else {
+                label = document.createElement("span");
+                label.className = "text-sm font-medium text-slate-700 dark:text-slate-200 truncate block";
+                label.textContent = m.name;
+              }
+              nameWrap.appendChild(label);
+
+              const playIcon = document.createElement("span");
+              playIcon.className = "flex-none grid place-items-center w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-white";
+              playIcon.innerHTML = `<svg class="w-3 h-3 ml-0.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>`;
+
+              btn.appendChild(num);
+              btn.appendChild(chip);
+              btn.appendChild(nameWrap);
+              btn.appendChild(playIcon);
+
+              btn.addEventListener("click", () => app.playTrack(btn));
+              dom.trackList.appendChild(btn);
+            });
+
+            // restore highlight if user had a track playing
+            if (state.currentTrackId) {
+              const btn = dom.trackList.querySelector(`.track-btn[data-id="${state.currentTrackId}"]`);
+              btn?.classList.add("playing");
+            }
+          },
+          renderYouTube: (meta) => {
+            dom.ytContainer.innerHTML = "";
+            const url = utils.getYoutubeEmbedUrl(meta.song_url);
+            if (!url) {
+              dom.ytContainer.innerHTML = `<div class="w-full h-full grid place-items-center text-xs text-slate-500">No video</div>`;
+              return;
+            }
+            const ifr = document.createElement("iframe");
+            ifr.src = url;
+            ifr.className = "w-full h-full";
+            ifr.title = `YouTube video player for ${meta.song_name}`;
+            ifr.frameBorder = "0";
+            ifr.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+            ifr.allowFullscreen = true;
+            ifr.loading = "lazy";
+            dom.ytContainer.appendChild(ifr);
           },
         };
 
-        // --- EVENT HANDLERS & LOGIC ---
+        // ---- App actions ----
         const app = {
           init: async () => {
             dom.player.addVisualizer(dom.visualizer);
-            const metadataMap = await utils.fetchMetadata(config.metadataUrl);
-            if (metadataMap) {
-              ui.renderAll(metadataMap);
-            }
-            dom.songListContainer.addEventListener("click", app.handlePlayClick);
-            dom.navContainer.addEventListener("click", app.handleNavClick);
-            dom.closePlayerBtn.addEventListener("click", app.closePlayer);
+            state.metadata = await utils.fetchMetadata(config.metadataUrl);
+            if (!state.metadata) return;
+
+            ui.buildNav();
+            dom.loadingIndicator.style.display = "none";
+            dom.playerShell.classList.remove("hidden");
+            dom.playerShell.classList.add("flex", "flex-col");
+
+            ui.renderCurrentSong();
+
+            dom.prevBtn.addEventListener("click", () => app.changeSong(-1));
+            dom.nextBtn.addEventListener("click", () => app.changeSong(1));
+            document.addEventListener("keydown", app.handleKey);
           },
-          handlePlayClick: (e) => {
-            const button = e.target.closest(".play-btn");
-            if (!button) return;
+          changeSong: (delta) => {
+            const catKey = state.categoryKeys[state.categoryIdx];
+            const cat = config.songCategories[catKey];
+            let newIdx = state.songIdx + delta;
+            let newCatIdx = state.categoryIdx;
 
+            if (newIdx < 0) {
+              if (newCatIdx > 0) {
+                newCatIdx -= 1;
+                newIdx = config.songCategories[state.categoryKeys[newCatIdx]].count - 1;
+              } else {
+                return;
+              }
+            } else if (newIdx >= cat.count) {
+              if (newCatIdx < state.categoryKeys.length - 1) {
+                newCatIdx += 1;
+                newIdx = 0;
+              } else {
+                return;
+              }
+            }
+
+            const direction = delta > 0 ? "next" : "prev";
+            state.categoryIdx = newCatIdx;
+            state.songIdx = newIdx;
+            state.currentTrackId = null; // reset active track on song change
+            dom.player.stop();
+            dom.nowPlayingTitle.textContent = "Select a track";
+            ui.updateNav();
+            ui.renderCurrentSong(direction);
+          },
+          goToCategory: (idx) => {
+            if (idx === state.categoryIdx) return;
+            state.categoryIdx = idx;
+            state.songIdx = 0;
+            state.currentTrackId = null;
+            dom.player.stop();
+            dom.nowPlayingTitle.textContent = "Select a track";
+            ui.updateNav();
+            ui.renderCurrentSong(idx > state.categoryIdx ? "prev" : "next");
+          },
+          playTrack: (btn) => {
             if (Tone.context.state !== "running") Tone.start();
-
-            dom.nowPlayingTitle.textContent = button.dataset.title;
-            dom.player.src = button.dataset.src;
-
-            dom.bottomPlayer.classList.remove("translate-y-full");
+            dom.trackList.querySelectorAll(".track-btn.playing").forEach((el) => el.classList.remove("playing"));
+            btn.classList.add("playing");
+            state.currentTrackId = btn.dataset.id;
+            dom.nowPlayingTitle.textContent = btn.dataset.title;
+            dom.player.src = btn.dataset.src;
             dom.player.addEventListener("load", () => dom.player.play(), { once: true });
           },
-          handleNavClick: (e) => {
-            e.preventDefault();
-            const link = e.target.closest(".nav-link");
-            if (!link) return;
-
-            const targetCategory = link.dataset.target;
-
-            dom.navContainer.querySelectorAll(".nav-link").forEach((l) => l.classList.remove("active"));
-            link.classList.add("active");
-
-            dom.songListContainer.querySelectorAll(".category-content").forEach((c) => c.classList.remove("active"));
-            document.getElementById(`category-${targetCategory}`).classList.add("active");
+          togglePlay: () => {
+            if (!dom.player.src) return;
+            if (dom.player.playing) dom.player.stop();
+            else dom.player.start();
           },
-          closePlayer: () => {
-            dom.player.stop();
-            dom.bottomPlayer.classList.add("translate-y-full");
+          handleKey: (e) => {
+            // skip if user is typing somewhere (there are no text inputs, but be safe)
+            const tag = (e.target.tagName || "").toLowerCase();
+            if (["input", "textarea", "select"].includes(tag)) return;
+
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              app.changeSong(1);
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              app.changeSong(-1);
+            } else if (e.key === "[") {
+              e.preventDefault();
+              if (state.categoryIdx > 0) app.goToCategory(state.categoryIdx - 1);
+            } else if (e.key === "]") {
+              e.preventDefault();
+              if (state.categoryIdx < state.categoryKeys.length - 1) app.goToCategory(state.categoryIdx + 1);
+            } else if (e.key === " " || e.code === "Space") {
+              e.preventDefault();
+              app.togglePlay();
+            } else if (/^[1-7]$/.test(e.key)) {
+              const idx = Number(e.key) - 1;
+              const btn = dom.trackList.querySelector(`.track-btn[data-idx="${idx}"]`);
+              if (btn) app.playTrack(btn);
+            }
           },
         };
 
-        // --- START THE APP ---
         app.init();
       });
     </script>
