@@ -1,128 +1,507 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Etude: A Controllable Music Generation Project</title>
+    <title>Etude — Controllable Piano Cover Generation</title>
+    <meta name="description" content="Etude: a three-stage deep learning system for expressive piano cover generation with nuanced style control." />
+
+    <script>
+      // Theme init (no flash). Default: light. Users who opt into dark via the toggle have it remembered.
+      (function () {
+        if (localStorage.getItem("etude-theme") === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "Noto Sans TC", "ui-sans-serif", "system-ui"],
+              display: ["Space Grotesk", "Inter", "ui-sans-serif", "system-ui"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              brand: {
+                50: "#eef2ff",
+                100: "#e0e7ff",
+                300: "#a5b4fc",
+                500: "#6366f1",
+                600: "#4f46e5",
+                700: "#4338ca",
+              },
+              accent: {
+                500: "#14b8a6",
+                600: "#0d9488",
+              },
+            },
+            keyframes: {
+              "fade-up": {
+                "0%": { opacity: "0", transform: "translateY(12px)" },
+                "100%": { opacity: "1", transform: "translateY(0)" },
+              },
+              "slow-pan": {
+                "0%,100%": { transform: "translate3d(0,0,0)" },
+                "50%": { transform: "translate3d(-2%,-1%,0)" },
+              },
+            },
+            animation: {
+              "fade-up": "fade-up 0.6s ease-out both",
+              "slow-pan": "slow-pan 18s ease-in-out infinite",
+            },
+          },
+        },
+      };
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
     <style>
+      :root {
+        color-scheme: light dark;
+      }
       body {
-        font-family: "Inter", "Noto Sans TC", sans-serif;
+        font-feature-settings: "cv11", "ss01";
+      }
+      /* Grid / dot background */
+      .bg-grid {
+        background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.15) 1px, transparent 0);
+        background-size: 24px 24px;
+      }
+      .dark .bg-grid {
+        background-image: radial-gradient(circle at 1px 1px, rgba(165, 180, 252, 0.12) 1px, transparent 0);
+      }
+      /* Radial aurora — cooler, more restrained */
+      .aurora {
+        background:
+          radial-gradient(55% 45% at 15% 20%, rgba(99, 102, 241, 0.18), transparent 65%),
+          radial-gradient(45% 40% at 85% 10%, rgba(20, 184, 166, 0.14), transparent 65%),
+          radial-gradient(50% 40% at 50% 100%, rgba(99, 102, 241, 0.1), transparent 65%);
+      }
+      .dark .aurora {
+        background:
+          radial-gradient(55% 45% at 15% 20%, rgba(99, 102, 241, 0.3), transparent 65%),
+          radial-gradient(45% 40% at 85% 10%, rgba(20, 184, 166, 0.22), transparent 65%),
+          radial-gradient(50% 40% at 50% 100%, rgba(99, 102, 241, 0.15), transparent 65%);
+      }
+
+      /* Animated music bars (hero visual) */
+      .eq-bar {
+        fill: url(#eqGrad);
+        transform-origin: bottom;
+        animation: eq-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes eq-pulse {
+        0%, 100% { transform: scaleY(0.5); }
+        50% { transform: scaleY(1); }
+      }
+
+      /* Gradient ring for arXiv pill */
+      .grad-ring {
+        position: relative;
+        background: rgb(255 255 255 / 0.7);
+      }
+      .dark .grad-ring { background: rgb(15 23 42 / 0.7); }
+      .grad-ring::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 9999px;
+        padding: 1px;
+        background: linear-gradient(90deg, rgba(99,102,241,0.6), rgba(20,184,166,0.6));
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+                mask-composite: exclude;
+        pointer-events: none;
+      }
+
+      /* Button shine sweep on hover */
+      .btn-primary {
+        background: linear-gradient(120deg, #1e293b 0%, #0f172a 100%);
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-primary::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.18) 50%, transparent 70%);
+        transform: translateX(-100%);
+        transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .btn-primary:hover::after { transform: translateX(100%); }
+      .dark .btn-primary {
+        background: linear-gradient(120deg, #ffffff 0%, #e2e8f0 100%);
+        color: #0f172a;
+      }
+
+      .btn-accent {
+        background: linear-gradient(120deg, #4f46e5 0%, #0d9488 100%);
+      }
+      .btn-accent:hover { filter: brightness(1.08); }
+      .reveal {
+        opacity: 0;
+        transform: translateY(14px);
+        transition: opacity 0.7s ease, transform 0.7s ease;
+      }
+      .reveal.in {
+        opacity: 1;
+        transform: none;
+      }
+      /* Copy button */
+      .copy-btn:active {
+        transform: scale(0.97);
+      }
+      pre.bibtex {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 0.8rem;
+        line-height: 1.55;
       }
     </style>
   </head>
-  <body class="bg-gray-50 text-gray-800">
-    <header class="text-center py-10 md:py-16 bg-white border-b border-gray-200">
-      <div class="container mx-auto px-4">
-        <h1 class="text-3xl md:text-5xl font-bold text-gray-900">
-          Etude: Piano Cover Generation with a Three-Stage Approach — Extract, strucTUralize, and DEcode.
-        </h1>
-        <p class="mt-4 text-base md:text-lg text-gray-600 max-w-6xl mx-auto md:max-w-4xl">
-          This project presents the Etude model, a deep learning system for expressive piano cover generation. It can be conditioned on high-level musical
-          attributes, allowing for nuanced control over the generated performance's style.
-        </p>
+
+  <body class="font-sans bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200 antialiased selection:bg-brand-600/25">
+    <!-- Top bar -->
+    <div class="sticky top-0 z-40 backdrop-blur bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div class="container mx-auto px-4 h-14 flex items-center justify-between">
+        <a href="#top" class="flex items-center gap-2 font-display font-semibold tracking-tight">
+          <span class="inline-grid place-items-center w-7 h-7 rounded-md bg-gradient-to-br from-brand-500 to-accent-500 text-white text-xs">E</span>
+          <span class="text-slate-900 dark:text-slate-100">Etude</span>
+          <span class="hidden sm:inline text-xs font-mono font-normal text-slate-500 dark:text-slate-400">/ piano cover generation</span>
+        </a>
+        <div class="flex items-center gap-1">
+          <a href="#demos" class="hidden sm:inline px-3 py-1.5 text-sm rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">Demos</a>
+          <a href="#resources" class="hidden sm:inline px-3 py-1.5 text-sm rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">Resources</a>
+          <a href="#cite" class="hidden sm:inline px-3 py-1.5 text-sm rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">Cite</a>
+          <button
+            id="theme-toggle"
+            type="button"
+            aria-label="Toggle theme"
+            class="ml-1 grid place-items-center w-9 h-9 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <svg class="w-4 h-4 block dark:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <svg class="w-4 h-4 hidden dark:block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hero -->
+    <header id="top" class="relative overflow-hidden">
+      <div class="absolute inset-0 aurora animate-slow-pan pointer-events-none"></div>
+      <div class="absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_75%)] pointer-events-none"></div>
+
+      <div class="relative container mx-auto px-4 pt-14 pb-16 md:pt-20 md:pb-24">
+        <div class="grid gap-10 md:gap-12 lg:grid-cols-12 items-center">
+          <!-- Left: copy + actions -->
+          <div class="lg:col-span-7 text-left">
+            <!-- Badges row -->
+            <div class="flex flex-wrap items-center gap-2 animate-fade-up">
+              <a href="https://arxiv.org/abs/2509.16522" target="_blank" rel="noopener noreferrer" class="grad-ring inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono backdrop-blur hover:brightness-105 transition">
+                <span class="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse"></span>
+                arXiv:2509.16522
+                <span class="text-slate-400 dark:text-slate-500">·</span>
+                <span class="text-slate-500 dark:text-slate-400">Preprint</span>
+              </a>
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 backdrop-blur">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a6 6 0 016 6v2a6 6 0 01-12 0V9a6 6 0 016-6zm1 14.93A8 8 0 0020 10h-2a6 6 0 11-12 0H4a8 8 0 007 7.93V21h2v-3.07z"/></svg>
+                Piano cover generation
+              </span>
+            </div>
+
+            <h1 class="mt-6 font-display text-[2.25rem] md:text-[3rem] lg:text-[3.5rem] leading-[1.05] font-bold tracking-tight text-slate-900 dark:text-white animate-fade-up [animation-delay:80ms]">
+              Expressive piano covers,
+              <span class="block bg-gradient-to-r from-brand-600 to-accent-600 dark:from-brand-300 dark:to-accent-500 bg-clip-text text-transparent">steerable by design.</span>
+            </h1>
+
+            <p class="mt-5 max-w-xl text-base md:text-lg text-slate-600 dark:text-slate-300 animate-fade-up [animation-delay:160ms]">
+              A three-stage deep learning system that lifts a source track into a symbolic form, imposes musical structure, and decodes a stylized performance — conditioned on high-level attributes like polyphony, rhythm intensity, and note sustain.
+            </p>
+
+            <!-- Pipeline chips -->
+            <div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-2 text-[13px] font-mono animate-fade-up [animation-delay:200ms]">
+              <span class="px-2.5 py-1 rounded-md bg-brand-50 dark:bg-brand-600/15 text-brand-700 dark:text-brand-300">Extract</span>
+              <span class="text-slate-400 dark:text-slate-500">→</span>
+              <span class="px-2.5 py-1 rounded-md bg-fuchsia-50 dark:bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300">strucTUralize</span>
+              <span class="text-slate-400 dark:text-slate-500">→</span>
+              <span class="px-2.5 py-1 rounded-md bg-teal-50 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300">DEcode</span>
+            </div>
+
+            <!-- Primary actions -->
+            <div class="mt-8 flex flex-wrap gap-3 animate-fade-up [animation-delay:240ms]">
+              <a href="demo1.html" class="btn-primary group inline-flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-white shadow-sm transition">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="m15.81 10l-2.5-5H14a.5.5 0 0 0 0-1h-.79a6.04 6.04 0 0 0-4.198-1.95L9 2a1 1 0 0 0-2 0v.05a6.17 6.17 0 0 0-4.247 1.947L2 4a.5.5 0 0 0 0 1h.69l-2.5 5H0c0 1.1 1.34 2 3 2s3-.9 3-2h-.19L3.26 4.91a.5.5 0 0 0 .159-.148A4.84 4.84 0 0 1 6.994 3.06L7 14H6v1H4v1h8v-1h-2v-1H9V3.06a4.7 4.7 0 0 1 3.524 1.693a.5.5 0 0 0 .193.186L10.19 10H10c0 1.1 1.34 2 3 2s3-.9 3-2zM5 10H1l2-3.94zm6 0l2-3.94L15 10z"/></svg>
+                Model Comparison
+                <svg class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 relative z-[1]" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z" clip-rule="evenodd"/></svg>
+              </a>
+              <a href="demo2.html" class="btn-accent group inline-flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-white shadow-sm transition">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" fill="currentColor"><path fill-rule="evenodd" d="M1.203 5.169L.784 8.94a2.305 2.305 0 0 0 4.353 1.286L5.5 9.5h3l.363.726a2.305 2.305 0 0 0 4.353-1.286l-.42-3.771A3 3 0 0 0 9.816 2.5h-5.63a3 3 0 0 0-2.982 2.669m3.172-.794c.345 0 .625.28.625.625v.542h.542a.625.625 0 1 1 0 1.25H5v.541a.625.625 0 1 1-1.25 0v-.541h-.542a.625.625 0 1 1 0-1.25h.542V5c0-.345.28-.625.625-.625m4.89 3.042a.625.625 0 1 0 0-1.25a.625.625 0 0 0 0 1.25m1.876-2.175a.625.625 0 1 1-1.25 0a.625.625 0 0 1 1.25 0" clip-rule="evenodd"/></svg>
+                Style Control
+                <svg class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z" clip-rule="evenodd"/></svg>
+              </a>
+            </div>
+
+            <!-- Secondary links -->
+            <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500 dark:text-slate-400 animate-fade-up [animation-delay:300ms]">
+              <a href="https://github.com/Xiugapurin/Etude" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-200 transition">
+                <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+                GitHub
+              </a>
+              <a href="https://arxiv.org/abs/2509.16522" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-200 transition">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="currentColor"><path d="M62.258 8.006a22.22 22.22 0 0 0-20.929 13.448c-3.404 8.169-.96 13.898 6.506 24.59c10.935 16.09 122.178 149.673 122.178 149.673l-24.619 23.038c-20.74 20.735-21.632 48.566-2.34 67.852l28.663 27.3l-79.976 98.235c-6.21 6.614-10.053 18.221-6.585 26.552a22.7 22.7 0 0 0 21.21 14.06a20.23 20.23 0 0 0 15.249-7.536l95.122-88.437L363.33 496.39a27.14 27.14 0 0 0 18.418 7.61a25.3 25.3 0 0 0 7.335-1.108a27.66 27.66 0 0 0 18.4-18.99a25.6 25.6 0 0 0-6.481-23.69L272.219 305.195l23.062-21.443c17.198-15.504 17.29-42.455.197-58.076l-25.257-24.228L357.417 98.46l.115-.133l.103-.14c7.793-10.123 11.52-17.92 7.502-27.806a36.17 36.17 0 0 0-23.647-18.37a24 24 0 0 0-3.166-.212l-.006.018a28.52 28.52 0 0 0-18.252 8.123l-.203.166l-.19.173L218.6 151.925L79.261 18.253S70.995 8.213 62.258 8.006m276.06 51.214q1.115.004 2.22.148a29.3 29.3 0 0 1 17.719 13.81c2.246 5.523 1.554 10.01-6.506 20.484L264.861 196.3l-40.882-39.22l100.68-91.304a21.77 21.77 0 0 1 13.66-6.536zM175.077 201.127L395.19 464.872c4.32 5.408 7.02 10.818 5.18 16.914a20.25 20.25 0 0 1-13.463 14.037a17.6 17.6 0 0 1-5.17.784a19.8 19.8 0 0 1-13.293-5.56l-220.15-209.694c-17.317-17.316-14.698-40.33 2.158-57.186z"/></svg>
+                arXiv
+              </a>
+              <a href="./assets/paper.pdf" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-200 transition">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8.267 14.68c-.184 0-.308.018-.372.036v1.178c.076.018.171.023.302.023c.479 0 .774-.242.774-.651c0-.366-.254-.586-.704-.586m3.487.012c-.2 0-.33.018-.407.036v2.61c.077.018.201.018.313.018c.817.006 1.349-.444 1.349-1.396c.006-.83-.479-1.268-1.255-1.268"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM9.498 16.19c-.309.29-.765.42-1.296.42a2 2 0 0 1-.308-.018v1.426H7v-3.936A7.6 7.6 0 0 1 8.219 14c.557 0 .953.106 1.22.319c.254.202.426.533.426.923c-.001.392-.131.723-.367.948m3.807 1.355c-.42.349-1.059.515-1.84.515c-.468 0-.799-.03-1.024-.06v-3.917A8 8 0 0 1 11.66 14c.757 0 1.249.136 1.633.426c.415.308.675.799.675 1.504c0 .763-.279 1.29-.663 1.615M17 14.77h-1.532v.911H16.9v.734h-1.432v1.604h-.906V14.03H17zM14 9h-1V4l5 5z"/></svg>
+                PDF
+              </a>
+            </div>
+          </div>
+
+          <!-- Right: Visual panel -->
+          <div class="lg:col-span-5 relative animate-fade-up [animation-delay:320ms]">
+            <div class="relative mx-auto max-w-md lg:max-w-none">
+              <!-- Soft glow -->
+              <div class="absolute -inset-4 bg-gradient-to-br from-brand-500/20 via-fuchsia-500/10 to-accent-500/20 blur-2xl rounded-[2rem] pointer-events-none"></div>
+
+              <!-- Card -->
+              <div class="relative rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur p-5 shadow-xl shadow-slate-900/5">
+                <!-- Header strip -->
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-red-400/80"></span>
+                    <span class="w-2 h-2 rounded-full bg-amber-400/80"></span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-400/80"></span>
+                  </div>
+                  <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">etude • piano roll</span>
+                </div>
+
+                <!-- Piano roll preview (SVG) -->
+                <svg viewBox="0 0 320 170" class="mt-4 w-full h-auto" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="eqGrad" x1="0" y1="1" x2="0" y2="0">
+                      <stop offset="0%" stop-color="#4f46e5" />
+                      <stop offset="100%" stop-color="#14b8a6" />
+                    </linearGradient>
+                    <linearGradient id="noteGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stop-color="#6366f1" />
+                      <stop offset="100%" stop-color="#2dd4bf" />
+                    </linearGradient>
+                  </defs>
+
+                  <!-- faint horizontal grid -->
+                  <g stroke="currentColor" stroke-width="0.5" class="text-slate-200 dark:text-slate-700" opacity="0.8">
+                    <line x1="0" y1="22" x2="320" y2="22"/>
+                    <line x1="0" y1="44" x2="320" y2="44"/>
+                    <line x1="0" y1="66" x2="320" y2="66"/>
+                    <line x1="0" y1="88" x2="320" y2="88"/>
+                    <line x1="0" y1="110" x2="320" y2="110"/>
+                    <line x1="0" y1="132" x2="320" y2="132"/>
+                  </g>
+
+                  <!-- note rectangles -->
+                  <g>
+                    <rect x="12"  y="66" width="28" height="10" rx="3" fill="url(#noteGrad)" opacity="0.9"/>
+                    <rect x="44"  y="44" width="22" height="10" rx="3" fill="url(#noteGrad)" opacity="0.85"/>
+                    <rect x="70"  y="88" width="34" height="10" rx="3" fill="url(#noteGrad)" opacity="0.95"/>
+                    <rect x="108" y="22" width="18" height="10" rx="3" fill="url(#noteGrad)" opacity="0.8"/>
+                    <rect x="130" y="66" width="40" height="10" rx="3" fill="url(#noteGrad)" opacity="0.9"/>
+                    <rect x="174" y="110" width="26" height="10" rx="3" fill="url(#noteGrad)" opacity="0.85"/>
+                    <rect x="204" y="44" width="30" height="10" rx="3" fill="url(#noteGrad)" opacity="0.9"/>
+                    <rect x="238" y="88" width="22" height="10" rx="3" fill="url(#noteGrad)" opacity="0.85"/>
+                    <rect x="264" y="66" width="40" height="10" rx="3" fill="url(#noteGrad)" opacity="0.95"/>
+                  </g>
+
+                  <!-- playhead -->
+                  <line x1="150" y1="16" x2="150" y2="148" stroke="#4f46e5" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>
+
+                  <!-- EQ bars at bottom -->
+                  <g transform="translate(0,170)">
+                    <rect class="eq-bar" x="12"  y="-28" width="4" height="24" rx="1.5" style="animation-delay:0s"/>
+                    <rect class="eq-bar" x="22"  y="-32" width="4" height="28" rx="1.5" style="animation-delay:0.1s"/>
+                    <rect class="eq-bar" x="32"  y="-24" width="4" height="20" rx="1.5" style="animation-delay:0.2s"/>
+                    <rect class="eq-bar" x="42"  y="-36" width="4" height="32" rx="1.5" style="animation-delay:0.05s"/>
+                    <rect class="eq-bar" x="52"  y="-20" width="4" height="16" rx="1.5" style="animation-delay:0.35s"/>
+                    <rect class="eq-bar" x="62"  y="-30" width="4" height="26" rx="1.5" style="animation-delay:0.15s"/>
+                    <rect class="eq-bar" x="72"  y="-26" width="4" height="22" rx="1.5" style="animation-delay:0.4s"/>
+                    <rect class="eq-bar" x="82"  y="-34" width="4" height="30" rx="1.5" style="animation-delay:0.25s"/>
+                  </g>
+                </svg>
+
+                <!-- Meta row -->
+                <div class="mt-4 flex items-center justify-between text-[11px] font-mono">
+                  <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-brand-500"></span> Polyphony</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-fuchsia-500"></span> Rhythm</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-accent-500"></span> Sustain</span>
+                  </div>
+                  <span class="text-brand-700 dark:text-brand-300">realtime</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
-    <nav class="bg-white border-b border-gray-200 py-6">
-      <div class="container mx-auto px-4 flex flex-wrap justify-center items-center gap-4">
-        <a
-          href="demo1.html"
-          class="inline-flex items-center bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-indigo-700 transition-all transform hover:scale-105"
-        >
-          <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-            <path
-              fill="currentColor"
-              d="m15.81 10l-2.5-5H14a.5.5 0 0 0 0-1h-.79a6.04 6.04 0 0 0-4.198-1.95L9 2a1 1 0 0 0-2 0v.05a6.17 6.17 0 0 0-4.247 1.947L2 4a.5.5 0 0 0 0 1h.69l-2.5 5H0c0 1.1 1.34 2 3 2s3-.9 3-2h-.19L3.26 4.91a.5.5 0 0 0 .159-.148A4.84 4.84 0 0 1 6.994 3.06L7 14H6v1H4v1h8v-1h-2v-1H9V3.06a4.7 4.7 0 0 1 3.524 1.693a.5.5 0 0 0 .193.186L10.19 10H10c0 1.1 1.34 2 3 2s3-.9 3-2zM5 10H1l2-3.94zm6 0l2-3.94L15 10z"
-            />
-          </svg>
-          Model Comparison
-        </a>
-
-        <a
-          href="demo2.html"
-          class="inline-flex items-center bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-indigo-700 transition-all transform hover:scale-105"
-        >
-          <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-            <path
-              fill="currentColor"
-              fill-rule="evenodd"
-              d="M1.203 5.169L.784 8.94a2.305 2.305 0 0 0 4.353 1.286L5.5 9.5h3l.363.726a2.305 2.305 0 0 0 4.353-1.286l-.42-3.771A3 3 0 0 0 9.816 2.5h-5.63a3 3 0 0 0-2.982 2.669m3.172-.794c.345 0 .625.28.625.625v.542h.542a.625.625 0 1 1 0 1.25H5v.541a.625.625 0 1 1-1.25 0v-.541h-.542a.625.625 0 1 1 0-1.25h.542V5c0-.345.28-.625.625-.625m4.89 3.042a.625.625 0 1 0 0-1.25a.625.625 0 0 0 0 1.25m1.876-2.175a.625.625 0 1 1-1.25 0a.625.625 0 0 1 1.25 0"
-              clip-rule="evenodd"
-            />
-          </svg>
-          Style Control
-        </a>
-
-        <a
-          href="https://github.com/Xiugapurin/Etude"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center bg-gray-800 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-gray-900 transition-all transform hover:scale-105"
-        >
-          <svg class="w-6 h-6 mr-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path
-              fill-rule="evenodd"
-              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-            ></path>
-          </svg>
-          GitHub
-        </a>
-
-        <a
-          href="https://arxiv.org/abs/2509.16522"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-teal-700 transition-all transform hover:scale-105"
-        >
-          <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" width="448" height="512" viewBox="0 0 448 512">
-            <path
-              fill="currentColor"
-              d="M62.258 8.006a22.22 22.22 0 0 0-20.929 13.448c-3.404 8.169-.96 13.898 6.506 24.59c10.935 16.09 122.178 149.673 122.178 149.673l-24.619 23.038c-20.74 20.735-21.632 48.566-2.34 67.852l28.663 27.3l-79.976 98.235c-6.21 6.614-10.053 18.221-6.585 26.552a22.7 22.7 0 0 0 21.21 14.06a20.23 20.23 0 0 0 15.249-7.536l95.122-88.437L363.33 496.39a27.14 27.14 0 0 0 18.418 7.61a25.3 25.3 0 0 0 7.335-1.108a27.66 27.66 0 0 0 18.4-18.99a25.6 25.6 0 0 0-6.481-23.69L272.219 305.195l23.062-21.443c17.198-15.504 17.29-42.455.197-58.076l-25.257-24.228L357.417 98.46l.115-.133l.103-.14c7.793-10.123 11.52-17.92 7.502-27.806a36.17 36.17 0 0 0-23.647-18.37a24 24 0 0 0-3.166-.212l-.006.018a28.52 28.52 0 0 0-18.252 8.123l-.203.166l-.19.173L218.6 151.925L79.261 18.253S70.995 8.213 62.258 8.006m276.06 51.214q1.115.004 2.22.148a29.3 29.3 0 0 1 17.719 13.81c2.246 5.523 1.554 10.01-6.506 20.484L264.861 196.3l-40.882-39.22l100.68-91.304a21.77 21.77 0 0 1 13.66-6.536zM175.077 201.127L395.19 464.872c4.32 5.408 7.02 10.818 5.18 16.914a20.25 20.25 0 0 1-13.463 14.037a17.6 17.6 0 0 1-5.17.784a19.8 19.8 0 0 1-13.293-5.56l-220.15-209.694c-17.317-17.316-14.698-40.33 2.158-57.186z"
-            />
-          </svg>
-          Paper (arXiv)
-        </a>
-
-        <a
-          href="./assets/paper.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-teal-700 transition-all transform hover:scale-105"
-        >
-          <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-            <path
-              fill="currentColor"
-              d="M8.267 14.68c-.184 0-.308.018-.372.036v1.178c.076.018.171.023.302.023c.479 0 .774-.242.774-.651c0-.366-.254-.586-.704-.586m3.487.012c-.2 0-.33.018-.407.036v2.61c.077.018.201.018.313.018c.817.006 1.349-.444 1.349-1.396c.006-.83-.479-1.268-1.255-1.268"
-            />
-            <path
-              fill="currentColor"
-              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM9.498 16.19c-.309.29-.765.42-1.296.42a2 2 0 0 1-.308-.018v1.426H7v-3.936A7.6 7.6 0 0 1 8.219 14c.557 0 .953.106 1.22.319c.254.202.426.533.426.923c-.001.392-.131.723-.367.948m3.807 1.355c-.42.349-1.059.515-1.84.515c-.468 0-.799-.03-1.024-.06v-3.917A8 8 0 0 1 11.66 14c.757 0 1.249.136 1.633.426c.415.308.675.799.675 1.504c0 .763-.279 1.29-.663 1.615M17 14.77h-1.532v.911H16.9v.734h-1.432v1.604h-.906V14.03H17zM14 9h-1V4l5 5z"
-            />
-          </svg>
-          Paper (PDF)
-        </a>
-      </div>
-    </nav>
-
-    <main class="container mx-auto px-12 py-4 md:px-8 md:py-6">
-      <div class="bg-white p-6 rounded-xl shadow-md overflow-hidden">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800 text-center">Automatic Piano Cover Generation Demo</h2>
-        <div class="w-full aspect-video">
-          <iframe
-            class="w-full h-full rounded-lg"
-            src="https://www.youtube.com/embed/Fu2e_Mgx5Bg"
-            title="YouTube video player for Etude Project"
-            frameborder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen
-          >
-          </iframe>
+    <main class="container mx-auto px-4 pb-20">
+      <!-- Video -->
+      <section id="demos" class="relative -mt-10 md:-mt-14">
+        <div class="reveal rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl shadow-slate-900/5">
+          <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/40">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-400/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400/80"></span>
+              <span class="ml-3 text-xs font-mono text-slate-500 dark:text-slate-400">etude/overview.mp4</span>
+            </div>
+            <span class="text-xs font-mono text-slate-500 dark:text-slate-400 hidden sm:inline">Automatic Piano Cover Demo</span>
+          </div>
+          <div class="aspect-video w-full bg-black">
+            <iframe
+              class="w-full h-full"
+              src="https://www.youtube.com/embed/Fu2e_Mgx5Bg"
+              title="YouTube video player for Etude Project"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen
+            ></iframe>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <!-- Feature cards -->
+      <section class="mt-16 md:mt-20">
+        <div class="reveal max-w-2xl">
+          <p class="text-xs font-mono uppercase tracking-wider text-brand-600 dark:text-brand-300">Pipeline</p>
+          <h2 class="mt-2 font-display text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Three stages, end-to-end</h2>
+          <p class="mt-2 text-slate-600 dark:text-slate-300">Each stage has a focused responsibility, and together they turn a raw audio track into a stylized, expressive piano cover.</p>
+        </div>
+
+        <div class="mt-8 grid gap-5 md:grid-cols-3">
+          <div class="reveal group p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-400/60 hover:shadow-md hover:-translate-y-0.5 transition">
+            <div class="inline-flex items-center gap-2">
+              <span class="font-mono text-xs px-2 py-1 rounded bg-brand-50 dark:bg-brand-600/10 text-brand-700 dark:text-brand-300">01 · Extract</span>
+            </div>
+            <h3 class="mt-4 font-display font-semibold text-lg">Audio → Symbolic</h3>
+            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Lift musical content out of the source recording into a symbolic representation we can reason about.</p>
+          </div>
+          <div class="reveal group p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-400/60 hover:shadow-md hover:-translate-y-0.5 transition">
+            <div class="inline-flex items-center gap-2">
+              <span class="font-mono text-xs px-2 py-1 rounded bg-fuchsia-50 dark:bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300">02 · strucTUralize</span>
+            </div>
+            <h3 class="mt-4 font-display font-semibold text-lg">Impose structure</h3>
+            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Organize content into a structured form that captures phrasing, density, and rhythmic hierarchy.</p>
+          </div>
+          <div class="reveal group p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-brand-400/60 hover:shadow-md hover:-translate-y-0.5 transition">
+            <div class="inline-flex items-center gap-2">
+              <span class="font-mono text-xs px-2 py-1 rounded bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-300">03 · DEcode</span>
+            </div>
+            <h3 class="mt-4 font-display font-semibold text-lg">Render a performance</h3>
+            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Decode a stylized piano performance, steerable via high-level attributes like polyphony and rhythm intensity.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Demo entries -->
+      <section class="mt-16 md:mt-20 grid gap-5 md:grid-cols-2">
+        <a href="demo1.html" class="reveal group relative overflow-hidden p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 hover:border-brand-400/60 hover:shadow-xl transition">
+          <div class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-brand-500/10 blur-2xl group-hover:bg-brand-500/20 transition"></div>
+          <p class="text-xs font-mono uppercase tracking-wider text-brand-600 dark:text-brand-300">Demo 01</p>
+          <h3 class="mt-2 font-display text-2xl font-bold">Model Comparison</h3>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Listen side-by-side: Etude variants against baselines (Music2Midi, PiCoGen2, AMT-APC) across 100 songs in four genres.</p>
+          <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 dark:text-brand-300">Open demo <svg class="w-4 h-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z" clip-rule="evenodd"/></svg></span>
+        </a>
+        <a href="demo2.html" class="reveal group relative overflow-hidden p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 hover:border-accent-500/60 hover:shadow-xl transition">
+          <div class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-accent-500/10 blur-2xl group-hover:bg-accent-500/25 transition"></div>
+          <p class="text-xs font-mono uppercase tracking-wider text-accent-600 dark:text-accent-500">Demo 02</p>
+          <h3 class="mt-2 font-display text-2xl font-bold">Interactive Style Control</h3>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Move the sliders — polyphony, rhythm intensity, note sustain — and hear how Etude's output bends to your taste in real time.</p>
+          <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-600 dark:text-accent-500">Try it live <svg class="w-4 h-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02z" clip-rule="evenodd"/></svg></span>
+        </a>
+      </section>
+
+      <!-- Resources + Cite -->
+      <section id="resources" class="mt-16 md:mt-20 grid gap-5 lg:grid-cols-5">
+        <div class="reveal lg:col-span-2 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <p class="text-xs font-mono uppercase tracking-wider text-slate-500">Resources</p>
+          <h3 class="mt-2 font-display text-xl font-bold">Get the paper & code</h3>
+          <ul class="mt-4 space-y-2 text-sm">
+            <li><a class="text-brand-700 dark:text-brand-300 hover:underline" href="https://arxiv.org/abs/2509.16522" target="_blank" rel="noopener noreferrer">arXiv:2509.16522</a></li>
+            <li><a class="text-brand-700 dark:text-brand-300 hover:underline" href="./assets/paper.pdf" target="_blank" rel="noopener noreferrer">Paper (PDF)</a></li>
+            <li><a class="text-brand-700 dark:text-brand-300 hover:underline" href="https://github.com/Xiugapurin/Etude" target="_blank" rel="noopener noreferrer">github.com/Xiugapurin/Etude</a></li>
+          </ul>
+        </div>
+        <div id="cite" class="reveal lg:col-span-3 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-100 relative">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-mono uppercase tracking-wider text-slate-400">BibTeX</p>
+            <button id="copy-bibtex" type="button" class="copy-btn inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-white/10 hover:bg-white/20 text-slate-100 transition">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 2a2 2 0 0 0-2 2v1H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V4a2 2 0 0 0-2-2zm0 2h4v2H8zM5 7h10v9H5z"/></svg>
+              <span id="copy-label">Copy</span>
+            </button>
+          </div>
+          <pre class="bibtex mt-3 whitespace-pre-wrap break-words text-slate-100/90"><code id="bibtex">@article{chen2025etude,
+  title   = {Etude: Piano Cover Generation with a Three-Stage Approach-Extract, strucTUralize, and DEcode},
+  author  = {Chen, Tse-Yang and Joung, Yuh-Jzer},
+  journal = {arXiv preprint arXiv:2509.16522},
+  year    = {2025}
+}</code></pre>
+        </div>
+      </section>
     </main>
+
+    <footer class="border-t border-slate-200 dark:border-slate-800">
+      <div class="container mx-auto px-4 py-8 text-sm text-slate-500 dark:text-slate-400 flex flex-col md:flex-row items-center gap-2 justify-between">
+        <p>© 2025 Etude Project.</p>
+        <p class="font-mono text-xs">Extract · strucTUralize · DEcode</p>
+      </div>
+    </footer>
+
+    <script>
+      // Theme toggle
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const root = document.documentElement;
+        root.classList.toggle("dark");
+        localStorage.setItem("etude-theme", root.classList.contains("dark") ? "dark" : "light");
+      });
+
+      // Reveal on scroll
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          });
+        },
+        { threshold: 0.12 }
+      );
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+      // Copy BibTeX
+      const copyBtn = document.getElementById("copy-bibtex");
+      const copyLabel = document.getElementById("copy-label");
+      copyBtn?.addEventListener("click", async () => {
+        const text = document.getElementById("bibtex").innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          copyLabel.textContent = "Copied!";
+          setTimeout(() => (copyLabel.textContent = "Copy"), 1500);
+        } catch {
+          copyLabel.textContent = "Press ⌘C";
+        }
+      });
+    </script>
   </body>
 </html>
